@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stress‑NG Benchmarks Guide</title>
+  <style>
+    :root{
+      --bg:#0c1117; --panel:#111827; --card:#0f1722; --border:#1f2a3a; --accent:#60a5fa; --text:#e5edf5; --muted:#93a4b8;
+      --r:14px; --rsm:12px; --shadow:0 12px 32px rgba(0,0,0,.35)
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Helvetica, Arial;
+         color:var(--text); background:linear-gradient(180deg,#0c1117 0%,#0a0f15 100%)}
+    a{color:var(--accent); text-decoration:none}
+    .wrap{max-width:1100px;margin:0 auto;padding:28px}
+    header{margin-bottom:18px}
+    h1{margin:0 0 8px; font-size:clamp(24px,4vw,38px)}
+    .sub{color:var(--muted); line-height:1.5}
+    .toolbar{display:flex; gap:8px; margin:8px 0 14px}
+    .btn{background:#152132; border:1px solid var(--border); color:var(--text); border-radius:10px; padding:9px 12px; cursor:pointer}
+    .btn:hover{background:#1a2a41}
+    .group, .test{background:var(--panel); border:1px solid var(--border); border-radius:var(--r); margin:12px 0; box-shadow:var(--shadow)}
+    summary{list-style:none; cursor:pointer; padding:16px 18px; display:flex; gap:10px; align-items:center}
+    .group > summary{font-weight:700}
+    .test{background:var(--card)}
+    .test > summary{padding:14px 16px}
+    .id{opacity:.85; font-variant-numeric:tabular-nums}
+    .point{color:#bfd5ee}
+    .body{padding: 0 18px 18px}
+    .kv{margin-top:10px; display:grid; grid-template-columns:1fr; gap:10px}
+    @media (min-width:860px){ .kv{grid-template-columns:repeat(2,minmax(0,1fr))} }
+    .cell{border:1px dashed var(--border); border-radius:var(--rsm); padding:12px}
+    .cell h4{margin:0 0 6px; font-size:12px; letter-spacing:.4px; text-transform:uppercase; color:#9fb2c9}
+    .cell p, .cell ul{margin:0; line-height:1.55}
+    .count{margin-left:auto; background:#122038; border:1px solid #23364e; color:#a8c1da; border-radius:999px; padding:2px 8px; font-size:12px}
+    .panel{background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:16px; box-shadow:var(--shadow); margin:12px 0}
+    .cards{display:grid; grid-template-columns:1fr; gap:12px}
+    @media (min-width:860px){ .cards{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Stress‑NG Benchmarks Guide</h1>
+      <div class="sub">stress‑ng의 다양한 테스트가 <strong>무엇을 측정하는지</strong>를 요약해 보여주는 가이드입니다. 아래 5개 그룹으로 구분하고, 각 항목의 특성 정보를 함께 제공합니다.</div>
+      <div class="toolbar">
+        <button class="btn" id="expandAll">모두 펼치기</button>
+        <button class="btn" id="collapseAll">모두 접기</button>
+      </div>
+    </header>
+    <section id="top-extra"></section>
+    <section id="container"></section>
+    <footer class="sub" style="margin-top:18px">참고: 설명은 Stress‑NG 0.18.x와 PTS 항목 요약을 기반으로 하며, 빌드/라이브러리/커널 옵션에 따라 실제 특성은 달라질 수 있습니다.</footer>
+  </div>
+  <script>
+    const GROUPS = [
+      { id:'simd', title:'수치 연산·SIMD (벡터/행렬/특수함수)', items:[6,7,29,30,32,34,35,36,38,40,41,42,43,44,49,50,51,52] },
+      { id:'memory', title:'메모리 계층/할당/가상메모리 (NUMA 포함)', items:[3,14,15,16,17,18,33] },
+      { id:'kernel', title:'커널·IPC·스케줄링/동기화', items:[8,9,10,11,12,13,20,21,22,23,25,27,31,37,39] },
+      { id:'data', title:'데이터 처리 라이브러리/알고리즘 (문자열·정렬·해시·압축·암호)', items:[2,4,5,26,28,45,46,47,48] },
+      { id:'core', title:'코어 마이크로아키텍처/제어흐름·특수명령', items:[1,19,24] },
+    ];
+    const T = {
+      1:{n:'CPU Stress',p:'정수/분기/기본 FP 혼합 → IPC/지속 클럭',a:'스칼라 ALU/FPU, 분기예측',d:'코어 자체 지속 성능',u:'범용 서버, 간단 계산 워크로드',t:'동일 코어/스레드/클럭 고정'},
+      2:{n:'Crypto',p:'암호/해시 부하 → AES/SHA 가속',a:'AES‑NI/VAES, PCLMUL, SHA 확장',d:'암호 가속 효과',u:'TLS 종료, 디스크 암호화, VPN',t:'동일 라이브러리·옵션 고정'},
+      3:{n:'Memory Copying',p:'대량 memcpy → 메모리 대역폭',a:'AVX(‑512) 최적화 memcpy(빌드 의존)',d:'대용량 복사',u:'인메모리 DB, ETL/미디어',t:'메모리 채널/정렬 영향'},
+      4:{n:'Glibc Qsort',p:'비교 정렬 → 분기예측/캐시',a:'분기예측, L1/L2',d:'qsort 기반 정렬',u:'DB ORDER BY, 로그/랭킹',t:'키 분포/비교 함수 비용'},
+      5:{n:'C String Funcs',p:'strlen/strcmp/mem* → 메모리 BW',a:'IFUNC 최적화(빌드 의존)',d:'문자열 처리',u:'헤더 파싱, 텍스트 파서',t:'문자 인코딩/패턴 영향'},
+      6:{n:'Vector Math',p:'벡터 산술 → SSE/AVX/AVX‑512',a:'SIMD 파이프, 로드/스토어, 셔플',d:'벡터 연산(내적 등)',u:'3D/물리, DSP/필터',t:'AVX‑512 다운클럭 주의'},
+      7:{n:'Matrix Math',p:'조밀 행렬 → FPU/SIMD + 캐시',a:'FMA, 캐시 재사용',d:'행렬 곱/연산',u:'BLAS, 과학계산',t:'블로킹/타일 크기 중요'},
+      8:{n:'Forking',p:'프로세스 생성/종료 비용',a:'COW/TLB/스케줄러',d:'프로세스 라이프사이클',u:'프리포크 서버, 런처',t:'컨테이너/보안옵션 영향'},
+      9:{n:'SysV Msg',p:'SysV 메시지 큐 → IPC 복사',a:'커널/유저 경계 복사',d:'레거시 IPC',u:'레거시 미들웨어',t:'소켓/공유메모리 대비 참고'},
+      10:{n:'Semaphores',p:'세마포어 동기화 경합',a:'대기/깨우기 경로',d:'락/시그널링',u:'DB/HPC 공유메모리',t:'경합 수준 동일화'},
+      11:{n:'Socket Activity',p:'로컬 소켓 I/O → syscalls',a:'send/recv, TCP/UNIX',d:'연결/전송/종료',u:'프록시, 게임서버',t:'오프로딩/NUMA 영향'},
+      12:{n:'Context Switching',p:'문맥 전환 오버헤드',a:'스케줄러/레지스터 저장',d:'스레드 전환',u:'고동시성 서버',t:'고정 배치·전력 정책'},
+      13:{n:'Atomic',p:'원자 연산→코히어런시',a:'CMPXCHG/MESIF',d:'락‑프리 기본',u:'카운터/큐/맵',t:'NUMA 바인딩 권장'},
+      14:{n:'CPU Cache',p:'L1/L2/L3 지연·대역',a:'프리패처/라인 충돌/TLB',d:'선형·랜덤 접근',u:'실시간 분석/인덱스',t:'L3 용량/토폴로지'},
+      15:{n:'Malloc',p:'동적 할당/해제',a:'할당자/락 경합',d:'작은 객체 반복',u:'웹 프레임워크',t:'동일 할당자 필수'},
+      16:{n:'MEMFD',p:'memfd/공유 매핑',a:'tmpfs/페이지 캐시',d:'디스크 없는 IPC',u:'브라우저/미디어 파이프',t:'커널/보안옵션 영향'},
+      17:{n:'MMAP',p:'mmap/munmap/폴트',a:'TLB/NUMA/THP',d:'파일·익명 매핑',u:'LMDB/파일 스캔',t:'THP/NUMA 정책'},
+      18:{n:'NUMA',p:'원격/로컬 메모리',a:'UPI/QPI/컨트롤러',d:'노드간 접근비용',u:'대용량 인메모리',t:'스레드·메모리 고정'},
+      19:{n:'x86_64 RdRand',p:'하드웨어 RNG',a:'RDRAND/RDSEED',d:'난수 발생',u:'키 시드/토큰',t:'보안상 직접 사용 제한'},
+      20:{n:'SENDFILE',p:'파일→소켓 제로카피',a:'페이지캐시/zero‑copy',d:'sendfile 경로',u:'정적 서빙/CDN',t:'오프로딩/대용량 유리'},
+      21:{n:'IO_uring',p:'비동기 I/O 큐',a:'SQ/CQ 공유링',d:'유저↔커널 경로',u:'프록시/스토리지',t:'커널/드라이버 의존'},
+      22:{n:'Futex',p:'유저 락의 커널 경합',a:'wait/wake',d:'경합시 커널 진입',u:'Go/Java 런타임',t:'경합 수준 통제'},
+      23:{n:'Mutex',p:'Pthread mutex',a:'빠른/느린 경로',d:'상호배제 오버헤드',u:'DB/게임 루프',t:'스핀·슬립 정책'},
+      24:{n:'Function Call',p:'호출/리턴 프론트엔드',a:'call/ret/RSB',d:'짧은 함수 반복',u:'인터프리터/미들웨어',t:'인라이닝/LTO 영향'},
+      25:{n:'Poll',p:'poll/epoll 다중화',a:'FD 스캔/레디리스트',d:'대량 FD 감시',u:'Nginx/Envoy/NIO',t:'커널·타임아웃 영향'},
+      26:{n:'Hash',p:'일반 해시 계산',a:'곱셈/회전/혼합',d:'키 요약',u:'해시테이블/샤딩',t:'키 길이/분포'},
+      27:{n:'Pthread',p:'스레드 생성/조인',a:'TLS/스케줄러',d:'스레드 라이프사이클',u:'워커 풀/HPC',t:'스택/정책 동일화'},
+      28:{n:'Zlib',p:'Deflate 압축',a:'crc/Huffman(+SIMD)',d:'텍스트·바이너리 압축',u:'HTTP/백업/오브젝트',t:'레벨/라이브러리 고정'},
+      29:{n:'Floating Point',p:'스칼라 FP',a:'FADD/FMUL/FDIV',d:'기초 실수 연산',u:'금융/필터/과학',t:'FDIV 비중 주의'},
+      30:{n:'FMA',p:'Fused Multiply‑Add',a:'FMA3/FMA4',d:'곱셈+덧셈 1사이클',u:'ML/DSP/물리',t:'유닛 수/클럭 영향'},
+      31:{n:'Pipe',p:'파이프 IPC',a:'버퍼/wakeup',d:'프로세스 간 통신',u:'파이프라인/ETL',t:'버퍼/스케줄러'},
+      32:{n:'Matrix 3D Math',p:'3D 변환',a:'SIMD/쿼터니언',d:'4×4 변환/곱',u:'게임/AR/VR/CAD',t:'데이터 레이아웃'},
+      33:{n:'AVL Tree',p:'균형 트리 접근',a:'분기예측/포인터',d:'삽입/탐색/삭제',u:'인메모리 인덱스',t:'메모리 지연 민감'},
+      34:{n:'Vector FP',p:'벡터화 FP',a:'AVX/AVX‑512',d:'벡터 실수 계산',u:'신호/영상/수치',t:'벡터 폭/레지스터'},
+      35:{n:'Vector Shuffle',p:'퍼뮤트/셔플',a:'PSHUFB/VPERM',d:'요소 재배열/혼합',u:'코덱/전처리/암호',t:'셔플 대역 병목'},
+      36:{n:'Wide Vector Math',p:'최대 벡터폭',a:'512b SIMD/마스크',d:'넓은 벡터 연산',u:'HPC/과학',t:'클럭 다운 주의'},
+      37:{n:'Cloning',p:'clone/vfork',a:'네임스페이스/flags',d:'경량 생성',u:'컨테이너/샌드박스',t:'cgroup 조합 영향'},
+      38:{n:'AVX‑512 VNNI',p:'INT8 dot‑product',a:'VPDP* 양자화',d:'INT8 곱누적',u:'DNN 추론/추천',t:'지원 유무 절벽형'},
+      39:{n:'Mixed Scheduler',p:'혼합 부하',a:'스레드/IPC/연산 혼합',d:'현실적 스케줄',u:'마이크로서비스',t:'P/E 코어 배치'},
+      40:{n:'Exponential',p:'exp 함수',a:'libm 벡터/보정',d:'지수 계산',u:'softmax/옵션가격',t:'정확도 모드 영향'},
+      41:{n:'Fractal',p:'반복 FP+분기',a:'탈출조건/분기',d:'프랙탈 생성',u:'절차적 그래픽',t:'브랜치 민감'},
+      42:{n:'Logarithmic',p:'log/ln',a:'근사/보정',d:'로그 계산',u:'정규화/통계',t:'라운딩/정확도'},
+      43:{n:'Power',p:'pow',a:'지수·로그 결합',d:'거듭제곱',u:'감마/색공간/과학',t:'정수/실수 지수 차'},
+      44:{n:'Trigonometric',p:'sin/cos/tan',a:'근사/테이블',d:'삼각함수',u:'그래픽/로보틱스',t:'벡터화 유무'},
+      45:{n:'JPEG',p:'JPEG 인코딩',a:'DCT/양자화/Huffman',d:'이미지 압축',u:'썸네일/미디어',t:'품질/라이브러리 고정'},
+      46:{n:'Bitonic Sort',p:'비토닉 정렬',a:'정렬 네트워크',d:'비분기적 패턴',u:'HPC/실시간',t:'메모리 패턴 중요'},
+      47:{n:'Radix String Sort',p:'문자열 기수 정렬',a:'버킷/패스 반복',d:'자리수별 정렬',u:'로그/색인',t:'문자집합/분포'},
+      48:{n:'POSIX Regex',p:'정규식 매칭',a:'NFA/DFA/백트랙',d:'패턴 매칭',u:'로그 필터/WAF',t:'패턴 복잡도'},
+      49:{n:'Integer Math',p:'정수 산술',a:'ADD/MUL/DIV',d:'정수 계산 전반',u:'집계/시뮬/암호일부',t:'DIV 병목 주의'},
+      50:{n:'Integer Bit Ops',p:'비트 조작',a:'POPCNT/BMI2',d:'시프트/마스크',u:'코덱/블룸/패킷',t:'BMI2/POPCNT 유무'},
+      51:{n:'Bessel',p:'특수함수',a:'libm 고정밀',d:'베셀 계열',u:'전파/진동',t:'정확도 옵션'},
+      52:{n:'Hyperbolic',p:'sinh/cosh/tanh',a:'근사/보정',d:'쌍곡선 함수',u:'ML 활성함수/통신',t:'범위 축소'}
+    };
+    const HW = {
+      simd: [
+        'SIMD 벡터 유닛(SSE/AVX/AVX‑512), FMA, VNNI(INT8)',
+        'FPU 파이프, XMM/YMM/ZMM 레지스터 파일',
+        '프론트엔드(디코더/µop 캐시), L1D 대역폭',
+        '(보조) AVX‑512 다운클럭, L2/L3 재사용, 메모리 정렬'
+      ],
+      memory: [
+        'DRAM 채널 수·속도(MT/s)·타이밍, 통합 메모리 컨트롤러(IMC)',
+        'LLC(L3) 용량·대역·지연, 프리패처',
+        'NUMA 패브릭(UPI/Infinity Fabric)',
+        'TLB/페이지워커, 페이지 크기(4K/2M/1G, THP)',
+        '(보조) 일관성 트래픽, 스토어 버퍼 정책, 할당자 락 경합'
+      ],
+      kernel: [
+        '코어 수·토폴로지(링/메시), SMT/HT, 코어간 지연',
+        '캐시 일관성 인터커넥트 대역, IPI/APIC(x2APIC)',
+        '(실 I/O) NVMe 컨트롤러·큐, NIC 오프로딩(RSS/TSO/GSO/Checksum), DMA 엔진',
+        '(보조) TLB shootdown, 컨텍스트 저장/복원, 메모리 복사 대역'
+      ],
+      data: [
+        '분기예측기/RSB, 캐시 지역성(L1/L2/L3)',
+        'SIMD 가속(문자열/압축/JPEG), 전용 명령(AES‑NI/VAES, PCLMULQDQ, SHA‑NI, CRC32, BMI2/POPCNT)',
+        '메모리 대역폭(memcpy/기수정렬)',
+        '(보조) IFUNC 선택(AVX/AVX‑512), 데이터 키 분포·길이, 압축 품질'
+      ],
+      core: [
+        '프론트엔드 폭, µop 캐시, ROB, 발행 포트',
+        '분기예측기/BTB/RSB, call/ret 경로',
+        '정수 ALU/나눗셈 유닛, RDRAND/RDSEED',
+        '(보조) 터보/전력·온도 헤드룸, 마이크로코드, 인라이닝 영향'
+      ]
+    };
+    function cell(title, html){ return `<div class="cell"><h4>${title}</h4>${html}</div>`; }
+    function cellP(title, text){ return cell(title, `<p>${text}</p>`); }
+    function cellUL(title, arr){ return cell(title, `<ul>${arr.map(x=>`<li>${x}</li>`).join('')}</ul>`); }
+    function renderGroups(withPerGroupHW=false){
+      const container = document.getElementById('container');
+      container.innerHTML = '';
+      GROUPS.forEach(g => {
+        const group = document.createElement('details');
+        group.className = 'group';
+        const s = document.createElement('summary');
+        s.innerHTML = `${g.title} <span class="count">${g.items.length} tests</span>`;
+        group.appendChild(s);
+        const body = document.createElement('div');
+        body.className = 'body';
+        if (withPerGroupHW){
+          const hwBox = document.createElement('div');
+          hwBox.className = 'panel';
+          hwBox.innerHTML = cellUL('하드웨어 민감도', HW[g.id]);
+          body.appendChild(hwBox);
+        }
+        g.items.forEach(id => {
+          const x = T[id];
+          const test = document.createElement('details');
+          test.className = 'test';
+          const st = document.createElement('summary');
+          st.innerHTML = `<span class="id">#${id}</span> <strong>${x.n}</strong> <span class="point">— ${x.p}</span>`;
+          const inner = document.createElement('div');
+          inner.className = 'body';
+          inner.innerHTML = `<div class="kv">
+              ${cellP('CPU·가속 특징', x.a)}
+              ${cellP('상세 설명', x.d)}
+              ${cellP('대표 사용처', x.u)}
+              ${cellP('비교 팁', x.t)}
+            </div>`;
+          test.append(st, inner);
+          body.appendChild(test);
+        });
+        group.appendChild(body);
+        container.appendChild(group);
+      });
+    }
+    function renderTopHW(){
+      const top = document.getElementById('top-extra');
+      top.innerHTML = '';
+      const panel = document.createElement('div');
+      panel.className = 'panel';
+      const title = document.createElement('div');
+      title.className = 'sub'; title.style.fontWeight = '700';
+      title.textContent = '그룹별 하드웨어 민감도 요약';
+      panel.appendChild(title);
+      const cards = document.createElement('div');
+      cards.className = 'cards';
+      GROUPS.forEach(g=>{
+        const card = document.createElement('div');
+        card.className = 'cell';
+        card.innerHTML = `<h4>${g.title}</h4><ul>${HW[g.id].map(x=>`<li>${x}</li>`).join('')}</ul>`;
+        cards.appendChild(card);
+      });
+      panel.appendChild(cards);
+      top.appendChild(panel);
+    }
+    document.getElementById('expandAll').addEventListener('click', ()=>{
+      document.querySelectorAll('details').forEach(d=> d.open = true);
+    });
+    document.getElementById('collapseAll').addEventListener('click', ()=>{
+      document.querySelectorAll('details.test').forEach(d=> d.open = false);
+      document.querySelectorAll('details.group').forEach(d=> d.open = false);
+    });
+  </script>
+<script>
+  renderGroups(true);
+</script>
+</body></html>

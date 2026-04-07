@@ -1,0 +1,1800 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Phoronix Benchmarks</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+  <script src="./chart.js"></script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="top-controls">
+    <div class="export-controls">
+      <label for="exportFormat">Export Format:</label>
+      <select id="exportFormat">
+        <option value="json">JSON</option>
+        <option value="html">HTML</option>
+        <option value="csv">CSV</option>
+      </select>
+      <button onclick="exportData()">⬇️ Export</button>
+      <input type="file" id="importFile" accept="application/json" onchange="importData(event)" />
+    </div>
+  </div>
+
+  <h1>Phoronix Test Results</h1>
+
+  <details>
+    <summary>📌 System Lists (Check to Filter)</summary>
+    <div id="system-filters"></div>
+  </details>
+
+  <details open>
+    <summary>📋 System Specs Table</summary>
+    <div id="system-specs"></div>
+  </details>
+
+  <details open>
+    <summary>📈 Performance Charts</summary>
+    <div id="unified-chart-container" style="overflow: visible; min-height: auto;"></div>
+  </details>
+  <div id="table-container"></div>
+  <div id="tables-all"></div>
+
+  <h2>📊 Normalized Comparison Matrix</h2>
+  <div id="normalized-summary"></div>
+  <div class="footer">© dh.kim / kimseongmin</div>
+
+  <script src="./data.js"></script>
+  <script>
+    let testData = window.testData || {}; // loaded from data.js
+
+    // tabs 요소 제거됨
+    const unifiedChartContainer = document.getElementById('unified-chart-container');
+    const tableContainer = document.getElementById('table-container');
+    const specContainer = document.getElementById('system-specs');
+    const summaryContainer = document.getElementById('normalized-summary');
+    const filterContainer = document.getElementById('system-filters');
+    const topControls = document.getElementById('top-controls');
+    let activeSystems = new Set();
+
+    function sanitizeTitle(raw) {
+      let s = String(raw || '');
+      s = s.replace(/POSIX Regular Expre\s*ion/ig, 'POSIX Regular Expression');
+      s = s.replace(/System V Me\s*age Pa\s*ing/ig, 'System V Message Passing');
+      s = s.replace(/Be\s*el\s+Math\s+Operations/ig, 'Bessel Math Operations');
+      s = s.replace(/Me\s*age/ig, 'Message');
+      s = s.replace(/Pa\s*ing/ig, 'Passing');
+      s = s.replace(/Expre\s*ion/ig, 'Expression');
+      s = s.replace(/\s{2,}/g, ' ').replace(/\s*-\s*$/,'').trim();
+      return s;
+    }
+
+    // 보정: "16 x GB ..." 형식에서 per-DIMM 용량이 빠진 경우 모듈 P/N로 추정
+    function normalizeMemoryDisplay(val) {
+      try {
+        const str = String(val || '');
+        const m = str.match(/^\s*(\d+)\s*x\s*(\d+)?\s*GB(.*)$/i);
+        if (!m) return str;
+        const count = parseInt(m[1], 10);
+        const hasPer = !!m[2];
+        if (hasPer || !count) return str;
+        const tail = m[3] || '';
+        const u = str.toUpperCase();
+        const rules = [
+          { re: /HMA82GR7/i, size: 16 },
+          { re: /M393A2G40/i, size: 16 },
+          { re: /HMCG88AGBRA191N/i, size: 32 }
+        ];
+        for (let i = 0; i < rules.length; i++) {
+          if (rules[i].re.test(u)) return `${count} x ${rules[i].size} GB${tail}`;
+        }
+        return str;
+      } catch { return String(val || ''); }
+    }
+
+    function formatValue(value, unit) {
+      if (typeof value !== 'number' || !isFinite(value)) return { value: value, unit: unit };
+      
+      // Request Per Second → Request Per Minute/Hour 변환
+      if (unit && unit.toLowerCase().includes('request per second')) {
+        if (value >= 3600) {
+          return { value: (value / 3600).toFixed(2), unit: unit.replace(/request per second/i, 'Request Per Hour') };
+        } else if (value >= 60) {
+          return { value: (value / 60).toFixed(2), unit: unit.replace(/request per second/i, 'Request Per Minute') };
+        }
+      }
+      
+      // Ops/sec, requests/sec, rps → k 단위 (대소문자 구분 없이)
+      if (unit && (unit.toLowerCase().includes('ops') || unit.toLowerCase().includes('requests') || unit.toLowerCase().includes('rps'))) {
+        if (value >= 1000) {
+          const newUnit = unit.replace(/ops|requests|rps/gi, 'k$&');
+          return { value: (value / 1000).toFixed(2), unit: newUnit };
+        }
+      }
+      
+      // Ops per sec → k 단위
+      if (unit && unit.toLowerCase().includes('ops per sec')) {
+        if (value >= 1000) {
+          return { value: (value / 1000).toFixed(2), unit: unit.replace(/ops per sec/i, 'kOps per sec') };
+        }
+      }
+      
+      // MiB/s → GiB/s → TiB/s
+      if (unit && unit.toLowerCase().includes('mib/s')) {
+        if (value >= 1024) {
+          return { value: (value / 1024).toFixed(2), unit: unit.replace(/mib\/s/i, 'GiB/s') };
+        }
+      }
+      if (unit && unit.toLowerCase().includes('gib/s')) {
+        if (value >= 1024) {
+          return { value: (value / 1024).toFixed(2), unit: unit.replace(/gib\/s/i, 'TiB/s') };
+        }
+      }
+      
+      // MB/s → GB/s → TB/s
+      if (unit && unit.toLowerCase().includes('mb/s')) {
+        if (value >= 1024) {
+          return { value: (value / 1024).toFixed(2), unit: unit.replace(/mb\/s/i, 'GB/s') };
+        }
+      }
+      if (unit && unit.toLowerCase().includes('gb/s')) {
+        if (value >= 1024) {
+          return { value: (value / 1024).toFixed(2), unit: unit.replace(/gb\/s/i, 'TB/s') };
+        }
+      }
+      
+      // KB/s → MB/s
+      if (unit && unit.toLowerCase().includes('kb/s')) {
+        if (value >= 1024) {
+          return { value: (value / 1024).toFixed(2), unit: unit.replace(/kb\/s/i, 'MB/s') };
+        }
+      }
+      
+      // Byte 단위 변환 (B → KB → MB → GB → TB)
+      if (unit && unit.toLowerCase().includes('byte') || unit.toLowerCase() === 'b') {
+        if (value >= 1024 * 1024 * 1024 * 1024) {
+          return { value: (value / (1024 * 1024 * 1024 * 1024)).toFixed(2), unit: 'TB' };
+        } else if (value >= 1024 * 1024 * 1024) {
+          return { value: (value / (1024 * 1024 * 1024)).toFixed(2), unit: 'GB' };
+        } else if (value >= 1024 * 1024) {
+          return { value: (value / (1024 * 1024)).toFixed(2), unit: 'MB' };
+        } else if (value >= 1024) {
+          return { value: (value / 1024).toFixed(2), unit: 'KB' };
+        }
+      }
+      
+      // IOPS → kIOPS
+      if (unit && unit.toLowerCase().includes('iops')) {
+        if (value >= 1000) {
+          return { value: (value / 1000).toFixed(2), unit: unit.replace(/iops/i, 'kIOPS') };
+        }
+      }
+      
+      // ms → μs (latency가 작은 경우)
+      if (unit && unit.toLowerCase().includes('ms')) {
+        if (value < 1) {
+          return { value: (value * 1000).toFixed(2), unit: unit.replace(/ms/i, 'μs') };
+        }
+      }
+      
+      // 기본값: 소수점 2자리까지 표시
+      return { value: value.toFixed(2), unit: unit };
+    }
+
+    function exportData() {
+      const format = document.getElementById('exportFormat').value;
+      let content, filename, mimeType;
+
+      switch(format) {
+        case 'html':
+          content = exportToHTML();
+          filename = 'phoronix-results.html';
+          mimeType = 'text/html';
+          break;
+        case 'csv':
+          content = exportToCSV();
+          filename = 'phoronix-results.csv';
+          mimeType = 'text/csv';
+          break;
+        default:
+          content = JSON.stringify(testData, null, 2);
+          filename = 'phoronix-results.json';
+          mimeType = 'application/json';
+      }
+
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function exportToHTML() {
+      let html = `
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Phoronix Test Results - Export</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      margin: 0;
+      padding: 20px;
+      background: #f8fafc;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    h1, h2, h3 {
+      color: #1f2937;
+      margin-top: 30px;
+      margin-bottom: 15px;
+    }
+    h1 { font-size: 28px; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; }
+    h2 { font-size: 22px; color: #374151; }
+    h3 { font-size: 18px; color: #4b5563; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    th {
+      background: #3b82f6;
+      color: white;
+      font-weight: 600;
+    }
+    tr:nth-child(even) { background: #f9fafb; }
+    tr:hover { background: #f3f4f6; }
+    .highlight { background: #dbeafe !important; font-weight: 600; }
+    .heat-high { background: #dcfce7; }
+    .heat-mid { background: #fef3c7; }
+    .heat-low { background: #fee2e2; }
+    /* 4-tier classes for normalized matrix (export) */
+    .tier-base { background: #fee2e2 !important; }
+    .tier-warn { background: #fed7aa !important; }
+    .tier-good { background: #dbeafe !important; }
+    .tier-best { background: #dcfce7 !important; }
+    .stats { font-size: 12px; color: #6b7280; }
+    .export-info {
+      background: #eff6ff;
+      border: 1px solid #3b82f6;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    .export-info p {
+      margin: 5px 0;
+      color: #1e40af;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="export-info">
+      <p><strong>Export Date:</strong> ${new Date().toLocaleString()}</p>
+      <p><strong>Total Tests:</strong> ${Object.keys(testData).filter(k => !k.startsWith('_')).length}</p>
+      <p><strong>Systems:</strong> ${Object.keys(testData._specs || {}).filter(s => activeSystems.has(s)).length}</p>
+    </div>
+    
+    <h1>Phoronix Test Results</h1>
+`;
+      
+      // System Specs
+      const specs = testData._specs || {};
+      const systems = Object.keys(specs).filter(s => activeSystems.has(s));
+      if (systems.length > 0) {
+        html += '<h2>System Specifications</h2>';
+        html += '<table><tr><th>항목</th>' + systems.map(s => `<th>${s}</th>`).join('') + '</tr>';
+        
+        const fields = ['CPU', 'Memory', 'Disk', 'OS', 'Kernel', 'Compiler'];
+        fields.forEach(field => {
+          html += `<tr><td><strong>${field}</strong></td>` + systems.map(s => `<td>${specs[s][field] || '-'}</td>`).join('') + '</tr>';
+        });
+        html += '</table>';
+      }
+
+      // Test Results
+      Object.entries(testData).forEach(([test, data]) => {
+        if (test.startsWith('_')) return;
+        const results = data.results.filter(r => activeSystems.has(r.system));
+        if (results.length === 0) return;
+
+        html += `<h2>${test}</h2>`;
+        html += '<table><tr><th>System</th><th>Score</th><th>Unit</th><th>Statistics</th></tr>';
+        
+        const lowerIsBetter = /(hackbench|tensorflow|squeezenet)/i.test(test);
+        const bestValue = lowerIsBetter ? Math.min(...results.map(r => r.value)) : Math.max(...results.map(r => r.value));
+        results.forEach(r => {
+          const highlight = r.value === bestValue ? ' class="highlight"' : '';
+          
+          let statsInfo = '-';
+          if (r.statistics && r.statistics.count > 1) {
+            statsInfo = `<div class="stats">${r.statistics.count} runs<br>Min: ${r.statistics.min.toFixed(2)}<br>Max: ${r.statistics.max.toFixed(2)}<br>Std: ${r.statistics.std.toFixed(2)}</div>`;
+          }
+          
+          html += `<tr${highlight}><td>${r.system}</td><td>${r.value.toFixed(2)}</td><td>${r.unit}</td><td>${statsInfo}</td></tr>`;
+        });
+        html += '</table>';
+        
+        // 상세 데이터 섹션 제거됨
+      });
+
+      // Normalized Matrix
+      const summary = testData._normalized?.summary || [];
+      const tests = testData._normalized?.tests || [];
+      const filtered = summary.filter(r => activeSystems.has(r.system));
+      
+      if (filtered.length > 0) {
+        html += '<h2>Normalized Comparison Matrix</h2>';
+        html += '<table><tr><th>System</th>' + tests.map(t => `<th>${t}</th>`).join('') + '<th>Avg</th></tr>';
+        
+        filtered.forEach(row => {
+          html += `<tr><td>${row.system}</td>`;
+          tests.forEach(t => {
+            const v = row.scores[t];
+            let cls = '';
+            // 4단계 색 구분: 1.00=빨강, 1.01~1.49=주황, 1.50~1.99=파랑, 2.00+=초록
+            if (!v) {
+              cls = '';
+            } else if (v >= 2.0) {
+              cls = 'tier-best';
+            } else if (v >= 1.5) {
+              cls = 'tier-good';
+            } else if (v > 1.0) {
+              cls = 'tier-warn';
+            } else { // v === 1.0
+              cls = 'tier-base';
+            }
+            html += `<td class="${cls}">${v ? v.toFixed(2) : '-'}</td>`;
+          });
+          const avg = tests.reduce((sum, t) => row.scores[t] ? sum + row.scores[t] : sum, 0) / tests.length;
+          html += `<td><strong>${avg.toFixed(2)}</strong></td></tr>`;
+        });
+        html += '</table>';
+      }
+
+      html += `
+    <div class="footer" style="margin-top:24px;margin-bottom:40px;padding-top:12px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;text-align:center;">© dh.kim / kimseongmin</div>
+  </div>
+</body>
+</html>`;
+
+      return html;
+    }
+
+         function exportToCSV() {
+       let csv = 'Test,System,Score,Unit,Runs,Min,Max,StdDev\n';
+       
+       Object.entries(testData).forEach(([test, data]) => {
+         if (test.startsWith('_')) return;
+         const results = data.results.filter(r => activeSystems.has(r.system));
+         results.forEach(r => {
+           const runs = r.statistics ? r.statistics.count : 1;
+           const min = r.statistics ? r.statistics.min : r.value;
+           const max = r.statistics ? r.statistics.max : r.value;
+           const std = r.statistics ? r.statistics.std : 0;
+           csv += `"${test}","${r.system}",${r.value.toFixed(2)},"${r.unit}",${runs},${min.toFixed(2)},${max.toFixed(2)},${std.toFixed(2)}\n`;
+         });
+       });
+       
+       return csv;
+     }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          testData = JSON.parse(e.target.result);
+          init();
+        } catch {
+          alert('Invalid JSON file.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function extractCpuGen(name) {
+      const match = name.match(/Xeon[^\d]*(\d{4,5})/);
+      return match ? parseInt(match[1]) : 0;
+    }
+
+         function init() {
+       // 디버깅: testData 구조 확인
+       console.log('Initializing with testData:', testData);
+       
+       const allSystems = Object.values(testData)
+         .flatMap(d => Array.isArray(d.results) ? d.results.map(r => r.system) : []);
+       const uniqueSystems = [...new Set(allSystems)].sort();
+       activeSystems = new Set(uniqueSystems);
+       
+       // 디버깅: 각 테스트의 상세 데이터 확인
+       Object.entries(testData).forEach(([testName, data]) => {
+         if (testName.startsWith('_')) return;
+         console.log(`Test: ${testName}`, data);
+         if (data.results) {
+           data.results.forEach(r => {
+             console.log(`  ${r.system}: detailedRuns=${r.detailedRuns ? r.detailedRuns.length : 0}, statistics=${r.statistics ? 'yes' : 'no'}`);
+           });
+         }
+       });
+
+      // 전역 변수로 이동
+      window.vendors = new Set();
+      window.activeVendors = new Set(['DELL', 'HP']);
+      window.vendorCheckboxes = {};
+      
+      renderFilterUI();
+    }
+    
+    function renderFilterUI() {
+      const uniqueSystems = [...new Set(Object.values(testData)
+        .flatMap(d => Array.isArray(d.results) ? d.results.map(r => r.system) : []))].sort();
+      
+      filterContainer.innerHTML = '';
+      
+      // 벤더사 추출
+      window.vendors.clear();
+      uniqueSystems.forEach(sys => {
+        const vendorMatch = sys.match(/\/ ([A-Z]+)/);
+        if (vendorMatch) {
+          window.vendors.add(vendorMatch[1]);
+        }
+      });
+      
+      // 벤더 필터 섹션 추가
+      if (window.vendors.size > 1) {
+        const vendorSection = document.createElement('div');
+        vendorSection.style.cssText = 'margin-bottom: 20px; padding: 8px; background-color: #f8fafc; border-radius: 6px; border: 1px solid #e5e7eb; clear: both; width: 100%; display: block;';
+        
+        const vendorTitle = document.createElement('div');
+        vendorTitle.textContent = '🏢 벤더사 필터';
+        vendorTitle.style.cssText = 'font-weight: bold; color: #374151; margin-bottom: 6px; font-size: 11px;';
+        vendorSection.appendChild(vendorTitle);
+        
+        const vendorContainer = document.createElement('div');
+        vendorContainer.style.cssText = 'display: flex; gap: 12px; flex-wrap: wrap;';
+        
+        [...window.vendors].sort().forEach(vendor => {
+          const vendorLabel = document.createElement('label');
+          vendorLabel.style.cssText = `
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            background-color: #e0f2fe;
+            border: 1px solid #0891b2;
+            border-radius: 16px;
+            font-size: 10px;
+            font-weight: 500;
+            cursor: pointer;
+            color: #0c4a6e;
+          `;
+          
+          const vendorCheckbox = document.createElement('input');
+          vendorCheckbox.type = 'checkbox';
+          
+          // 현재 activeSystems 상태에 따라 초기 체크 상태 결정
+          const vendorSystems = uniqueSystems.filter(sys => {
+            const sysVendorMatch = sys.match(/\/ ([A-Z]+)/);
+            return sysVendorMatch && sysVendorMatch[1] === vendor;
+          });
+          const checkedVendorSystems = vendorSystems.filter(sys => activeSystems.has(sys));
+          vendorCheckbox.checked = checkedVendorSystems.length > 0;
+          
+          vendorCheckbox.style.cssText = 'margin-right: 4px; transform: scale(0.8);';
+          
+          // 벤더 체크박스 참조 저장
+          window.vendorCheckboxes[vendor] = { checkbox: vendorCheckbox, label: vendorLabel };
+          
+          // 초기 스타일 설정
+          if (checkedVendorSystems.length === 0) {
+            vendorLabel.style.backgroundColor = '#f3f4f6';
+            vendorLabel.style.borderColor = '#d1d5db';
+            vendorLabel.style.color = '#6b7280';
+            window.activeVendors.delete(vendor);
+          } else if (checkedVendorSystems.length === vendorSystems.length) {
+            vendorLabel.style.backgroundColor = '#e0f2fe';
+            vendorLabel.style.borderColor = '#0891b2';
+            vendorLabel.style.color = '#0c4a6e';
+            window.activeVendors.add(vendor);
+          } else {
+            vendorLabel.style.backgroundColor = '#fef3c7';
+            vendorLabel.style.borderColor = '#f59e0b';
+            vendorLabel.style.color = '#92400e';
+            window.activeVendors.add(vendor);
+          }
+          vendorCheckbox.onchange = () => {
+            if (vendorCheckbox.checked) {
+              window.activeVendors.add(vendor);
+              vendorLabel.style.backgroundColor = '#e0f2fe';
+              vendorLabel.style.borderColor = '#0891b2';
+              vendorLabel.style.color = '#0c4a6e';
+              
+              // 해당 벤더의 모든 시스템을 활성화
+              uniqueSystems.forEach(sys => {
+                const sysVendorMatch = sys.match(/\/ ([A-Z]+)/);
+                if (sysVendorMatch && sysVendorMatch[1] === vendor) {
+                  activeSystems.add(sys);
+                }
+              });
+            } else {
+              window.activeVendors.delete(vendor);
+              vendorLabel.style.backgroundColor = '#f3f4f6';
+              vendorLabel.style.borderColor = '#d1d5db';
+              vendorLabel.style.color = '#6b7280';
+              
+              // 해당 벤더의 모든 시스템을 비활성화
+              uniqueSystems.forEach(sys => {
+                const sysVendorMatch = sys.match(/\/ ([A-Z]+)/);
+                if (sysVendorMatch && sysVendorMatch[1] === vendor) {
+                  activeSystems.delete(sys);
+                }
+              });
+            }
+            
+            // 필터 UI만 다시 그리기 (activeSystems 상태 유지)
+            renderFilterUI();
+            renderAll();
+          };
+          
+          vendorLabel.appendChild(vendorCheckbox);
+          vendorLabel.append(vendor);
+          vendorContainer.appendChild(vendorLabel);
+        });
+        
+        vendorSection.appendChild(vendorContainer);
+        filterContainer.appendChild(vendorSection);
+      }
+      
+      // 모델 체크박스 참조 저장용
+      window.modelCheckboxes = {};
+      
+      // 벤더 체크박스 상태 업데이트 함수
+      window.updateVendorCheckboxes = function() {
+        const uniqueSystems = [...new Set(Object.values(testData)
+          .flatMap(d => Array.isArray(d.results) ? d.results.map(r => r.system) : []))].sort();
+          
+        Object.keys(window.vendorCheckboxes).forEach(vendor => {
+          const vendorSystems = uniqueSystems.filter(sys => {
+            const sysVendorMatch = sys.match(/\/ ([A-Z]+)/);
+            return sysVendorMatch && sysVendorMatch[1] === vendor;
+          });
+          
+          const checkedSystems = vendorSystems.filter(sys => activeSystems.has(sys));
+          const { checkbox, label } = window.vendorCheckboxes[vendor];
+          
+          if (checkedSystems.length === 0) {
+            // 해당 벤더의 시스템이 모두 해제된 경우
+            checkbox.checked = false;
+            window.activeVendors.delete(vendor);
+            label.style.backgroundColor = '#f3f4f6';
+            label.style.borderColor = '#d1d5db';
+            label.style.color = '#6b7280';
+          } else if (checkedSystems.length === vendorSystems.length) {
+            // 해당 벤더의 시스템이 모두 체크된 경우
+            checkbox.checked = true;
+            window.activeVendors.add(vendor);
+            label.style.backgroundColor = '#e0f2fe';
+            label.style.borderColor = '#0891b2';
+            label.style.color = '#0c4a6e';
+          } else {
+            // 일부만 체크된 경우 (중간 상태)
+            checkbox.checked = true;
+            window.activeVendors.add(vendor);
+            label.style.backgroundColor = '#fef3c7';
+            label.style.borderColor = '#f59e0b';
+            label.style.color = '#92400e';
+          }
+        });
+      }
+      
+      // 모델 체크박스 상태 업데이트 함수
+      window.updateModelCheckboxes = function() {
+        const uniqueSystems = [...new Set(Object.values(testData)
+          .flatMap(d => Array.isArray(d.results) ? d.results.map(r => r.system) : []))].sort();
+          
+        Object.keys(window.modelCheckboxes).forEach(modelKey => {
+          const modelCheckbox = window.modelCheckboxes[modelKey];
+          
+          // 해당 모델의 시스템들 찾기
+          const modelSystems = uniqueSystems.filter(sys => {
+            const cpuMatch = sys.match(/Intel Xeon (.+?) \//);
+            const cpuModel = cpuMatch ? cpuMatch[1] : 'Other';
+            const modelInfo = getCpuModelGroup(cpuModel);
+            
+            if (modelInfo.model !== modelKey) return false;
+            
+            const vendorMatch = sys.match(/\/ ([A-Z]+)/);
+            const systemVendor = vendorMatch ? vendorMatch[1] : 'Unknown';
+            return window.activeVendors.has(systemVendor);
+          });
+          
+          const checkedModelSystems = modelSystems.filter(sys => activeSystems.has(sys));
+          modelCheckbox.checked = checkedModelSystems.length === modelSystems.length && modelSystems.length > 0;
+        });
+      }
+      
+      // CPU 모델별로 시스템 그룹화
+      const modelGroups = {};
+      
+      // CPU 모델 분류 함수 (숫자 기준으로 단순화)
+      function getCpuModelGroup(cpuModel) {
+        console.log(`분류 중인 모델: "${cpuModel}"`);
+        
+        // 모델에서 숫자 추출 (4216, 4416, 6737, 6740 등)
+        const modelMatch = cpuModel.match(/(\d{4})/);
+        if (!modelMatch) {
+          return { model: 'Other', order: 9999, fullName: '기타 CPU' };
+        }
+        
+        const modelNum = parseInt(modelMatch[1]);
+        console.log(`추출된 모델 번호: ${modelNum}`);
+        
+        // 주요 모델 번호로 그룹화
+        if (modelNum === 4216) {
+          return { model: '4216', order: 4216, fullName: 'Intel Xeon Silver 4216' };
+        } else if (modelNum === 4416) {
+          return { model: '4416', order: 4416, fullName: 'Intel Xeon Silver 4416+' };
+        } else if (modelNum === 6737) {
+          return { model: '6737P', order: 6737, fullName: 'Intel Xeon 6737P' };
+        } else if (modelNum === 6740) {
+          return { model: '6740E', order: 6740, fullName: 'Intel Xeon 6740E' };
+        } else {
+          // 새로운 모델이 추가될 경우 자동으로 그룹화
+          return { model: `${modelNum}`, order: modelNum, fullName: `Intel Xeon ${modelNum}` };
+        }
+      }
+      
+      uniqueSystems.forEach(sys => {
+        // CPU 모델 추출 (예: "Intel Xeon Silver 4216" → "Silver 4216")
+        const cpuMatch = sys.match(/Intel Xeon (.+?) \//);
+        const cpuModel = cpuMatch ? cpuMatch[1] : 'Other';
+        
+        console.log(`시스템: ${sys} → 추출된 모델: "${cpuModel}"`);
+        
+        const modelInfo = getCpuModelGroup(cpuModel);
+        
+        if (!modelGroups[modelInfo.model]) {
+          modelGroups[modelInfo.model] = {
+            systems: [],
+            order: modelInfo.order,
+            fullName: modelInfo.fullName
+          };
+        }
+        
+        modelGroups[modelInfo.model].systems.push(sys);
+      });
+      
+      // 모델 번호순으로 정렬 (4216 → 4416 → 6737P → 6740E)
+      const sortedModels = Object.keys(modelGroups).sort((a, b) => {
+        return modelGroups[a].order - modelGroups[b].order;
+      });
+      
+      // 각 모델별로 시스템 표시
+      let visibleGroupIndex = 0;
+      sortedModels.forEach((modelKey, modelIndex) => {
+        const modelData = modelGroups[modelKey];
+        
+        // 현재 벤더 필터에 해당하는 시스템이 있는지 확인
+        const hasVisibleSystems = modelData.systems.some(sys => {
+          const vendorMatch = sys.match(/\/ ([A-Z]+)/);
+          const systemVendor = vendorMatch ? vendorMatch[1] : 'Unknown';
+          return window.activeVendors.has(systemVendor);
+        });
+        
+        if (!hasVisibleSystems) {
+          return; // 표시할 시스템이 없으면 그룹 전체를 건너뜀
+        }
+        
+        // 모델별 구분선 (첫 번째 표시되는 그룹 제외)
+        if (visibleGroupIndex > 0) {
+          const separator = document.createElement('hr');
+          separator.style.cssText = 'margin: 20px 0; border: none; border-top: 3px solid #3b82f6; clear: both; width: 100%;';
+          filterContainer.appendChild(separator);
+        }
+        
+        // 모델 제목과 체크박스 추가
+        const modelHeader = document.createElement('div');
+        modelHeader.style.cssText = 'display: flex; align-items: center; margin: 8px 0 6px 0; clear: both;';
+        
+        const modelCheckbox = document.createElement('input');
+        modelCheckbox.type = 'checkbox';
+        modelCheckbox.style.cssText = 'margin-right: 6px; transform: scale(1.1);';
+        
+        // 현재 모델의 모든 시스템이 체크되어 있는지 확인
+        const modelSystems = modelData.systems.filter(sys => {
+          const vendorMatch = sys.match(/\/ ([A-Z]+)/);
+          const systemVendor = vendorMatch ? vendorMatch[1] : 'Unknown';
+          return window.activeVendors.has(systemVendor);
+        });
+        const checkedModelSystems = modelSystems.filter(sys => activeSystems.has(sys));
+        modelCheckbox.checked = checkedModelSystems.length === modelSystems.length && modelSystems.length > 0;
+        
+        // 모델 체크박스 참조 저장
+        window.modelCheckboxes[modelKey] = modelCheckbox;
+        
+        modelCheckbox.onchange = () => {
+          if (modelCheckbox.checked) {
+            // 해당 모델의 모든 시스템 체크
+            modelSystems.forEach(sys => {
+              activeSystems.add(sys);
+            });
+          } else {
+            // 해당 모델의 모든 시스템 해제
+            modelSystems.forEach(sys => {
+              activeSystems.delete(sys);
+            });
+          }
+          
+          // 벤더 체크박스 상태 업데이트
+          if (window.updateVendorCheckboxes) {
+            window.updateVendorCheckboxes();
+          }
+          
+          renderFilterUI();
+          renderAll();
+        };
+        
+        const modelTitle = document.createElement('span');
+        modelTitle.textContent = modelData.fullName;
+        modelTitle.style.cssText = 'font-weight: bold; color: #1f2937; font-size: 12px; cursor: pointer;';
+        modelTitle.onclick = () => {
+          modelCheckbox.checked = !modelCheckbox.checked;
+          modelCheckbox.onchange();
+        };
+        
+        modelHeader.appendChild(modelCheckbox);
+        modelHeader.appendChild(modelTitle);
+        filterContainer.appendChild(modelHeader);
+        
+        // 각 그룹을 담을 컨테이너 생성
+        const groupContainer = document.createElement('div');
+        groupContainer.style.cssText = 'margin-bottom: 12px; line-height: 1.8; clear: both; width: 100%; display: block;';
+        
+        visibleGroupIndex++;
+        
+        // 각 그룹 내에서도 시스템명 정렬
+        const sortedSystems = modelData.systems.sort((a, b) => {
+          // 시스템명에서 숫자 부분 추출해서 정렬
+          const getNumbers = (str) => {
+            const matches = str.match(/\d+/g);
+            return matches ? matches.map(n => parseInt(n)) : [0];
+          };
+          
+          const numsA = getNumbers(a);
+          const numsB = getNumbers(b);
+          
+          for (let i = 0; i < Math.max(numsA.length, numsB.length); i++) {
+            const numA = numsA[i] || 0;
+            const numB = numsB[i] || 0;
+            if (numA !== numB) return numA - numB;
+          }
+          return a.localeCompare(b);
+        });
+        
+        sortedSystems.forEach(sys => {
+          // 벤더 필터링 확인
+          const vendorMatch = sys.match(/\/ ([A-Z]+)/);
+          const systemVendor = vendorMatch ? vendorMatch[1] : 'Unknown';
+          
+          if (!window.activeVendors.has(systemVendor)) {
+            return; // 비활성화된 벤더의 시스템은 표시하지 않음
+          }
+          
+          const label = document.createElement('label');
+          label.style.cssText = `
+            display: inline-block; 
+            margin: 2px 8px 2px 0; 
+            white-space: nowrap; 
+            font-size: 11px;
+            vertical-align: middle;
+            cursor: pointer;
+            padding: 2px 6px;
+            background-color: #f3f4f6;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+          `;
+          
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = sys;
+          checkbox.checked = activeSystems.has(sys);
+          checkbox.style.cssText = `
+            margin-right: 4px;
+            transform: scale(0.9);
+            vertical-align: middle;
+          `;
+          checkbox.onchange = () => {
+            if (checkbox.checked) {
+              activeSystems.add(sys);
+              label.style.backgroundColor = '#dbeafe';
+              label.style.borderColor = '#3b82f6';
+            } else {
+              activeSystems.delete(sys);
+              label.style.backgroundColor = '#f9fafb';
+              label.style.borderColor = '#d1d5db';
+            }
+            
+            // 벤더 및 모델 체크박스 상태 업데이트
+            if (window.updateVendorCheckboxes) {
+              window.updateVendorCheckboxes();
+            }
+            if (window.updateModelCheckboxes) {
+              window.updateModelCheckboxes();
+            }
+            renderAll();
+          };
+          
+          // 초기 체크 상태에 따른 스타일 설정
+          if (checkbox.checked) {
+            label.style.backgroundColor = '#dbeafe';
+            label.style.borderColor = '#3b82f6';
+          } else {
+            label.style.backgroundColor = '#f9fafb';
+            label.style.borderColor = '#d1d5db';
+          }
+          
+          label.appendChild(checkbox);
+          label.append(sys);
+          groupContainer.appendChild(label);
+        });
+        
+        filterContainer.appendChild(groupContainer);
+      });
+
+      // stress-ng 전용 보기 버튼
+      setupStressNgButton();
+
+      renderAll();
+    }
+
+    function isStressNgTest(testName) {
+      return /^stress-ng/i.test(testName);
+    }
+
+    function extractStressSuiteName(testName, data) {
+      const desc = (data && data.description) ? String(data.description) : '';
+      const m = desc.match(/Test:\s*([^\n<]+)/i);
+      if (m && m[1]) return m[1].trim();
+      // fallback: test 이름에서 stress-ng 접두사 제거 후 첫 토큰
+      const fallback = String(testName).replace(/^stress-ng[^a-z0-9]+/i, '').trim();
+      return fallback || testName;
+    }
+
+    function setupStressNgButton() {
+      // 기존 버튼 제거 후 다시 생성
+      const old = document.getElementById('stressng-view-btn');
+      if (old) old.remove();
+
+      const hasStress = Object.keys(testData).some(k => !k.startsWith('_') && isStressNgTest(k));
+      if (!hasStress) return;
+
+      const btn = document.createElement('button');
+      btn.id = 'stressng-view-btn';
+      btn.style.marginLeft = '8px';
+      btn.textContent = '🧪 Open stress-ng Viewer';
+      btn.onclick = openStressNgViewer;
+      topControls.querySelector('.export-controls')?.appendChild(btn);
+    }
+
+    function openStressNgViewer() {
+      const suites = {};
+      Object.entries(testData).forEach(([test, data]) => {
+        if (test.startsWith('_')) return;
+        if (!isStressNgTest(test)) return;
+        const results = (data.results || []).filter(r => activeSystems.has(r.system));
+        if (results.length === 0) return;
+        const suite = extractStressSuiteName(test, data);
+        if (!suites[suite]) suites[suite] = [];
+        suites[suite].push({
+          test,
+          description: data.description || '',
+          unit: results[0]?.unit || '',
+          results: results.map(r => ({
+            system: r.system,
+            value: r.value,
+            unit: r.unit,
+            statistics: r.statistics || null
+          }))
+        });
+      });
+
+      const payload = {
+        suites,
+        activeSystems: Array.from(activeSystems),
+        specs: testData._specs || {}
+      };
+
+      try { localStorage.setItem('stressng_payload', JSON.stringify(payload)); } catch {}
+      window.open('stress-ng.html', '_blank');
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // 커스텀 툴팁 함수들 (차트 스타일과 동일)
+    function createCustomTooltip(element, content) {
+      removeCustomTooltip(); // 기존 툴팁 제거
+      
+      const tooltip = document.createElement('div');
+      tooltip.id = 'custom-description-tooltip';
+      tooltip.style.cssText = `
+        position: absolute;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        line-height: 1.4;
+        max-width: 450px;
+        white-space: pre-line;
+        z-index: 10000;
+        pointer-events: none;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        font-family: Inter, sans-serif;
+      `;
+      tooltip.textContent = content;
+      
+      document.body.appendChild(tooltip);
+      
+      // 위치 조정 (차트 툴팁과 유사한 위치)
+      const rect = element.getBoundingClientRect();
+      const tooltipRect = tooltip.getBoundingClientRect();
+      
+      let left = rect.left + rect.width + 8; // 오른쪽에 표시
+      let top = rect.top + (rect.height / 2) - (tooltipRect.height / 2);
+      
+      // 화면 경계 조정
+      if (left + tooltipRect.width > window.innerWidth - 10) {
+        left = rect.left - tooltipRect.width - 8; // 왼쪽으로 이동
+      }
+      if (left < 10) {
+        left = rect.left + (rect.width / 2) - (tooltipRect.width / 2); // 중앙 정렬
+        top = rect.top - tooltipRect.height - 8; // 위쪽으로
+      }
+      if (top < 10) {
+        top = rect.bottom + 8; // 아래쪽으로
+      }
+      if (top + tooltipRect.height > window.innerHeight - 10) {
+        top = window.innerHeight - tooltipRect.height - 10;
+      }
+      
+      tooltip.style.left = left + window.scrollX + 'px';
+      tooltip.style.top = top + window.scrollY + 'px';
+    }
+    
+    function removeCustomTooltip() {
+      const existing = document.getElementById('custom-description-tooltip');
+      if (existing) {
+        existing.remove();
+      }
+    }
+
+    function addTestDescriptionTable(container, testLabels, testData) {
+      const displayedTests = new Set();
+      const descriptions = [];
+      
+      // testData에서 직접 description이 있는 항목들을 찾기
+      Object.entries(testData).forEach(([testName, data]) => {
+        if (testName.startsWith('_')) return; // _specs, _normalized 제외
+        
+        const description = data.description;
+        console.log('Checking test:', testName, 'Description:', description);
+        
+        if (description && description.trim()) {
+          // parser.js에서 이미 처리된 description을 사용
+          const originalDescriptions = data.descriptions || [];
+          descriptions.push({ 
+            testName, 
+            description: description.trim(),
+            originalDescriptions: originalDescriptions
+          });
+        }
+      });
+      
+      if (descriptions.length > 0) {
+        // 테스트 설명 테이블 생성
+        const tableContainer = document.createElement('div');
+        tableContainer.setAttribute('data-test-descriptions', 'true'); // 식별자 추가
+        tableContainer.style.marginTop = '15px';
+        tableContainer.style.padding = '10px';
+        tableContainer.style.backgroundColor = '#fafbfc';
+        tableContainer.style.borderRadius = '6px';
+        tableContainer.style.border = '1px solid #e5e7eb';
+        
+        const details = document.createElement('details');
+        details.style.margin = '0';
+        details.style.border = 'none';
+        details.style.background = 'transparent';
+        details.style.padding = '0';
+        
+        const summary = document.createElement('summary');
+        summary.textContent = '📝 Test Descriptions';
+        summary.style.cursor = 'pointer';
+        summary.style.margin = '0 0 8px 0';
+        summary.style.fontSize = '12px';
+        summary.style.color = '#4b5563';
+        summary.style.fontWeight = '600';
+        summary.style.listStyle = 'none';
+        summary.style.userSelect = 'none';
+        
+        details.appendChild(summary);
+        
+        const table = document.createElement('table');
+        table.style.width = '100%';
+        table.style.fontSize = '10px';
+        table.style.borderCollapse = 'collapse';
+        
+        descriptions.forEach(({ testName, description, originalDescriptions }) => {
+          const row = document.createElement('tr');
+          
+          const nameCell = document.createElement('td');
+          nameCell.textContent = testName;
+          nameCell.style.padding = '6px 8px';
+          nameCell.style.fontWeight = 'bold';
+          nameCell.style.borderBottom = '1px solid #e5e7eb';
+          nameCell.style.width = '180px';
+          nameCell.style.verticalAlign = 'top';
+          nameCell.style.color = '#374151';
+          
+          const descCell = document.createElement('td');
+          descCell.textContent = description;
+          descCell.style.padding = '6px 8px';
+          descCell.style.borderBottom = '1px solid #e5e7eb';
+          descCell.style.color = '#6b7280';
+          descCell.style.lineHeight = '1.3';
+          descCell.style.position = 'relative';
+          
+          // 원본 descriptions가 여러 개 있으면 툴팁 추가 (중복 제거 후 확인)
+          const uniqueOriginalDescriptions = [...new Set(originalDescriptions || [])];
+          if (uniqueOriginalDescriptions.length > 1) {
+            descCell.style.cursor = 'help';
+            descCell.style.textDecoration = 'underline';
+            descCell.style.textDecorationStyle = 'dotted';
+            
+            // 툴팁 내용 생성 (중복 제거)
+            const tooltipContent = uniqueOriginalDescriptions
+              .map((desc, idx) => `${idx + 1}. ${desc}`)
+              .join('\n');
+            
+            // 브라우저 기본 툴팁 제거 (title 속성 사용하지 않음)
+            
+            // 호버 효과와 커스텀 툴팁만 사용
+            descCell.addEventListener('mouseenter', function(e) {
+              this.style.backgroundColor = '#f3f4f6';
+              createCustomTooltip(e.target, tooltipContent);
+            });
+            
+            descCell.addEventListener('mouseleave', function() {
+              this.style.backgroundColor = 'transparent';
+              removeCustomTooltip();
+            });
+          }
+          
+          row.appendChild(nameCell);
+          row.appendChild(descCell);
+          table.appendChild(row);
+        });
+        
+        details.appendChild(table);
+        tableContainer.appendChild(details);
+        container.appendChild(tableContainer);
+        
+        // DOM 추가 확인
+        console.log('✅ Added test description table with', descriptions.length, 'entries');
+        console.log('Container:', container);
+        console.log('Table container:', tableContainer);
+        console.log('Container children count:', container.children.length);
+        
+        // 깔끔한 스타일 적용
+        tableContainer.style.display = 'block';
+        tableContainer.style.visibility = 'visible';
+      } else {
+        console.log('❌ No descriptions found');
+        // 디버그용 메시지 추가
+        const debugContainer = document.createElement('div');
+        debugContainer.style.marginTop = '20px';
+        debugContainer.style.padding = '15px';
+        debugContainer.style.backgroundColor = '#fff3cd';
+        debugContainer.style.border = '1px solid #ffeaa7';
+        debugContainer.style.borderRadius = '8px';
+        debugContainer.innerHTML = '<h4>Debug: No Test Descriptions Found</h4><p>Check browser console for details</p>';
+        container.appendChild(debugContainer);
+      }
+    }
+
+    function buildStressNgHTML(suites) {
+      const activeSpecs = testData._specs || {};
+      const activeSystemsList = Object.keys(activeSpecs).filter(s => activeSystems.has(s));
+      let html = `\n<!DOCTYPE html>\n<html lang="ko">\n<head>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1" />\n  <title>stress-ng Results Viewer</title>\n  <link rel="stylesheet" href="./styles.css" />\n  <style>\n    body { background:#f8fafc; margin:0; padding:16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }\n    .container { max-width: 1200px; margin: 0 auto; background:#fff; padding:24px; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,.06);}\n    h1 { margin:0 0 12px 0; }\n    h2 { margin:24px 0 8px 0; }\n    h3 { margin:16px 0 8px 0; }\n    table { width:100%; border-collapse: collapse; margin: 8px 0 16px 0; }\n    th, td { padding: 10px; border-bottom: 1px solid #e5e7eb; text-align:left;}\n    th { background:#3b82f6; color:#fff; }\n    tr:nth-child(even) { background:#f9fafb; }\n    .suite-card { margin-top:16px; padding:8px 0; }\n    .muted { color:#6b7280; font-size:12px;}\n  </style>\n</head>\n<body>\n  <div class="container">\n    <h1>stress-ng Results</h1>\n    <div class="muted">Active systems: ${activeSystemsList.map(escapeHtml).join(', ') || '-'}</div>\n`;
+
+      const suiteNames = Object.keys(suites);
+      if (suiteNames.length === 0) {
+        html += '<p>표시할 stress-ng 결과가 없습니다.</p>';
+      } else {
+        suiteNames.forEach(suite => {
+          html += `<div class="suite-card"><h2>${escapeHtml(suite)}</h2>`;
+          suites[suite].forEach(entry => {
+            const { test, unit, results } = entry;
+            html += `<h3>${escapeHtml(test)}</h3>`;
+            html += '<table><tr><th>System</th><th>Score</th><th>Unit</th><th>Statistics</th></tr>';
+            // best highlight 계산 (lowerIsBetter는 stress-ng 특정 테스트에 따라 다를 수 있으나, 기본 상향식으로 처리)
+            const bestValue = Math.max(...results.map(r => r.value));
+            results.forEach(r => {
+              const highlight = r.value === bestValue ? ' style="font-weight:600;background:#dbeafe;"' : '';
+              let statsInfo = '-';
+              if (r.statistics && r.statistics.count > 1) {
+                try {
+                  const minV = formatValue(r.statistics.min, unit);
+                  const maxV = formatValue(r.statistics.max, unit);
+                  statsInfo = `${r.statistics.count} runs<br><small>Min: ${minV.value} ${minV.unit} · Max: ${maxV.value} ${maxV.unit} · Std: ${Number(r.statistics.std).toFixed(2)}</small>`;
+                } catch {
+                  statsInfo = `${r.statistics.count} runs`;
+                }
+              }
+              const valF = formatValue(r.value, unit);
+              html += `<tr${highlight}><td>${escapeHtml(r.system)}</td><td>${valF.value}</td><td>${escapeHtml(valF.unit || unit || '')}</td><td>${statsInfo}</td></tr>`;
+            });
+            html += '</table>';
+          });
+          html += '</div>';
+        });
+      }
+
+      html += `\n    <div class="footer" style="margin-top:24px;margin-bottom:40px;padding-top:12px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;text-align:center;">© dh.kim / kimseongmin</div>\n  </div>\n</body>\n</html>`;
+      return html;
+    }
+
+    function renderAll() {
+      renderSpecs();
+      renderCharts();
+      renderTestDescriptions(); // 별도 함수로 분리
+      renderAllScoreTables();
+      renderNormalized();
+      // charts tooltips only; no table tooltips
+    }
+
+    function renderSpecs() {
+      const specs = testData._specs || {};
+      const fields = ['CPU', 'Memory', 'Disk', 'OS', 'Kernel', 'Compiler'];
+      const shown = Object.keys(specs).filter(s => activeSystems.has(s));
+      if (shown.length === 0) return;
+      let html = '<table style="font-size:10px; font-weight:bold;"><tr><th>항목</th>' + shown.map(s => `<th>${s}</th>`).join('') + '</tr>';
+      fields.forEach(field => {
+        html += '<tr><td>' + field + '</td>' + shown.map(s => {
+          let v = (specs[s] && specs[s][field]) ? specs[s][field] : '-';
+          if (field === 'Memory') v = normalizeMemoryDisplay(v);
+          return '<td>' + escapeHtml(String(v)) + '</td>';
+        }).join('') + '</tr>';
+      });
+      html += '</table>';
+      specContainer.innerHTML = html;
+    }
+
+    function renderTabs() {
+      // removed (no-op)
+    }
+
+    function renderTestDescriptions() {
+      // Test Descriptions를 차트와 별도로 렌더링
+      const container = unifiedChartContainer;
+      
+      // 기존 Test Descriptions 테이블 제거
+      const existingDescriptions = container.querySelectorAll('[data-test-descriptions]');
+      existingDescriptions.forEach(desc => desc.remove());
+      
+      console.log('🔍 Rendering Test Descriptions independently');
+      
+      const testLabels = Object.keys(testData).filter(k => !k.startsWith('_'));
+      addTestDescriptionTable(container, testLabels, testData);
+    }
+
+    function renderCharts() {
+      // Test Descriptions 테이블을 보존하기 위해 차트만 제거
+      const existingCharts = unifiedChartContainer.querySelectorAll('.chart-card');
+      existingCharts.forEach(chart => chart.remove());
+          const styles = getComputedStyle(document.documentElement);
+          const accentRgb = (styles.getPropertyValue('--accent-rgb').trim() || '59, 130, 246');
+          const ticksColor = (styles.getPropertyValue('--text-muted').trim() || '#6b7280');
+          const gridColor = (styles.getPropertyValue('--muted').trim() || '#e5e7eb');
+
+      // 모든 테스트 데이터를 하나의 차트로 통합
+      const allLabels = [];
+      const allData = [];
+      const originalData = []; // 원본 값과 단위 저장
+      const testLabels = []; // 테스트명 저장
+      const backgroundColors = [];
+      const borderColors = [];
+      
+      // 색상 팔레트
+      const colors = [
+        'rgba(59, 130, 246, 0.6)',   // blue
+        'rgba(34, 197, 94, 0.6)',    // green
+        'rgba(234, 179, 8, 0.6)',    // yellow
+        'rgba(239, 68, 68, 0.6)',    // red
+        'rgba(168, 85, 247, 0.6)',   // purple
+        'rgba(249, 115, 22, 0.6)',   // orange
+        'rgba(20, 184, 166, 0.6)',   // teal
+        'rgba(244, 63, 94, 0.6)',    // pink
+      ];
+
+      let colorIndex = 0;
+      Object.entries(testData).forEach(([test, data]) => {
+        if (test.startsWith('_')) return;
+        const results = data.results.filter(r => activeSystems.has(r.system));
+        if (results.length === 0) return;
+
+        const title = sanitizeTitle(test);
+        const testValues = results.map(r => r.statistics ? r.statistics.avg : r.value);
+        const maxValue = Math.max(...testValues);
+        
+        results.forEach((result, idx) => {
+          const value = result.statistics ? result.statistics.avg : result.value;
+          const formatted = formatValue(value, result.unit);
+          
+          // 각 테스트 내에서 상대적 비율로 정규화 (최대값을 100으로)
+          const normalizedValue = maxValue > 0 ? (value / maxValue) * 100 : 0;
+          
+          allLabels.push(result.system); // Y축에는 시스템명만
+          allData.push(normalizedValue);
+          originalData.push({ 
+            value: formatted.value, 
+            unit: formatted.unit, 
+            rawValue: value,
+            statistics: result.statistics // statistics 정보 추가
+          });
+          testLabels.push(title); // 테스트명 별도 저장
+          
+          const color = colors[colorIndex % colors.length];
+          backgroundColors.push(color);
+          borderColors.push(color.replace('0.6', '1'));
+        });
+        colorIndex++;
+      });
+
+      console.log('Chart data:', { allLabels, allData, testDataKeys: Object.keys(testData), activeSystems });
+
+      if (allLabels.length === 0) {
+        console.warn('No chart data available. Check testData and activeSystems.');
+        const noDataDiv = document.createElement('div');
+        noDataDiv.style.cssText = 'padding: 20px; text-align: center; color: var(--text-muted);';
+        noDataDiv.textContent = 'No chart data available. Please check system filters.';
+        unifiedChartContainer.appendChild(noDataDiv);
+        return;
+      }
+
+      // 통합 차트 컨테이너 생성
+      const chartCard = document.createElement('div');
+      chartCard.className = 'chart-card';
+      chartCard.style.position = 'relative';
+      chartCard.innerHTML = '<h3 style="margin:8px 0 6px 0;">All Performance Tests</h3><canvas id="unified-chart"></canvas>';
+      
+      // 단위 정보 박스 제거됨 (통합 차트에서 불필요)
+      
+      unifiedChartContainer.appendChild(chartCard);
+      
+      setTimeout(() => {
+        // 가로형 차트: 항목 수에 따른 동적 차트 높이 계산
+        const itemCount = allLabels.length;
+        const heightPerItem = 35; // 각 항목당 고정 높이 (여백 포함)
+        const basePadding = 120; // 상하 여백
+        const dynamicHeight = Math.max(300, itemCount * heightPerItem + basePadding);
+        
+        const canvas = document.getElementById('unified-chart');
+        const container = canvas.parentElement;
+        
+        // 컨테이너에 고정 높이 설정 (description table을 위해 overflow visible)
+        container.style.height = `${dynamicHeight}px`;
+        container.style.overflow = 'visible';
+        container.style.position = 'relative';
+        container.style.border = 'none'; // 테두리 제거
+        container.style.background = 'transparent'; // 배경 투명
+        
+        // 캔버스 크기 초기화
+        canvas.style.height = '100%';
+        canvas.style.width = '100%';
+        canvas.style.cursor = 'pointer'; // 클릭 가능하다는 것을 표시
+
+        // 하이라이트 상태 관리
+        let highlightedIndex = -1;
+        let highlightedSystem = null;
+        let highlightedTest = null;
+        const originalBackgroundColors = [...backgroundColors];
+        const originalBorderColors = [...borderColors];
+
+        // 시스템별 인덱스 매핑 생성
+        const systemIndexMap = {};
+        allLabels.forEach((systemName, index) => {
+          if (!systemIndexMap[systemName]) {
+            systemIndexMap[systemName] = [];
+          }
+          systemIndexMap[systemName].push(index);
+        });
+
+        const chart = new Chart(canvas, {
+          type: 'bar',
+          data: {
+            labels: allLabels,
+            datasets: [{
+              label: 'Performance',
+              data: allData,
+              backgroundColor: backgroundColors,
+              borderColor: borderColors,
+              borderWidth: 1,
+              barPercentage: 0.6, // 막대 두께 줄임
+              categoryPercentage: 0.7 // 카테고리 간격 늘림
+            }]
+          },
+          plugins: [{
+            id: 'testLabels',
+            afterRender: function(chart) {
+              // 기존 HTML 요소들 제거
+              const existingLabels = container.querySelectorAll('.test-label-overlay');
+              existingLabels.forEach(label => label.remove());
+              
+              const chartArea = chart.chartArea;
+              const canvasRect = chart.canvas.getBoundingClientRect();
+              const containerRect = container.getBoundingClientRect();
+              
+              // 각 막대의 Y 위치에 테스트명 표시 (각 테스트당 1개만)
+              let displayedTests = new Set();
+              chart.data.labels.forEach((label, index) => {
+                const meta = chart.getDatasetMeta(0);
+                const bar = meta.data[index];
+                if (bar) {
+                  const testName = testLabels[index];
+                  const systemName = label;
+                  
+                  // 각 테스트명은 처음 나올 때만 표시
+                  if (!displayedTests.has(testName)) {
+                    // HTML 요소로 테스트명 생성
+                    const testLabel = document.createElement('div');
+                    testLabel.className = 'test-label-overlay';
+                    testLabel.textContent = testName;
+                    testLabel.style.cssText = `
+                      position: absolute;
+                      left: 10px;
+                      top: ${bar.y + canvasRect.top - containerRect.top - 6}px;
+                      font: bold 11px Inter, sans-serif;
+                      color: #1f2937;
+                      cursor: pointer;
+                      padding: 2px 4px;
+                      border-radius: 3px;
+                      transition: background-color 0.2s;
+                      z-index: 10;
+                      user-select: none;
+                    `;
+                    
+                    // 호버 효과
+                    testLabel.addEventListener('mouseenter', () => {
+                      testLabel.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+                    });
+                    testLabel.addEventListener('mouseleave', () => {
+                      testLabel.style.backgroundColor = 'transparent';
+                    });
+                    
+                    // 클릭 이벤트: 해당 테스트의 모든 시스템 하이라이트
+                    testLabel.addEventListener('click', (e) => {
+                      e.stopPropagation();
+                      highlightTestSystems(testName, chart);
+                    });
+                    
+                    container.appendChild(testLabel);
+                    displayedTests.add(testName);
+                  }
+                }
+              });
+            }
+          }, {
+            id: 'testSeparators',
+            beforeDraw: function(chart) {
+              const ctx = chart.ctx;
+              const chartArea = chart.chartArea;
+              
+              ctx.save();
+              ctx.strokeStyle = 'rgba(200, 200, 200, 0.5)';
+              ctx.lineWidth = 1;
+              ctx.setLineDash([5, 5]); // 점선
+              
+              // 테스트가 바뀌는 지점에 구분선 그리기
+              let currentTest = '';
+              chart.data.labels.forEach((label, index) => {
+                const testName = testLabels[index];
+                if (testName !== currentTest && index > 0) {
+                  const meta = chart.getDatasetMeta(0);
+                  const bar = meta.data[index];
+                  const prevBar = meta.data[index - 1];
+                  
+                  if (bar && prevBar) {
+                    const y = (bar.y + prevBar.y) / 2;
+                    ctx.beginPath();
+                                          ctx.moveTo(0, y); // 맨 왼쪽에서 시작
+                      ctx.lineTo(chartArea.right, y);
+                    ctx.stroke();
+                  }
+                }
+                currentTest = testName;
+              });
+              
+              ctx.restore();
+            }
+          }],
+          options: {
+            indexAxis: 'y', // 가로형 차트
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: {
+              intersect: true, // 정확한 위치에서만 툴팁 표시
+              mode: 'point' // 개별 포인트 기준
+            },
+            onClick: (event, elements) => {
+              console.log('Chart clicked!', elements); // 디버깅용
+              if (elements.length > 0) {
+                const clickedIndex = elements[0].index;
+                const clickedSystem = allLabels[clickedIndex];
+                console.log('Clicked system:', clickedSystem); // 디버깅용
+                
+                // 동일한 시스템의 모든 막대 하이라이트
+                highlightSystemBars(clickedSystem, chart);
+              } else {
+                // 빈 공간 클릭 시 모든 하이라이트 해제
+                resetHighlight(chart);
+              }
+            },
+            plugins: {
+              legend: { display: false },
+              tooltip: { 
+                enabled: true, 
+                intersect: true, // 정확한 위치에서만 툴팁 표시
+                mode: 'point', // 개별 포인트 기준
+                position: 'nearest', // 가장 가까운 위치
+                backgroundColor: 'rgba(0,0,0,0.8)',
+                titleColor: 'white',
+                bodyColor: 'white',
+                borderColor: 'rgba(255,255,255,0.3)',
+                borderWidth: 1,
+                cornerRadius: 6,
+                displayColors: false,
+                callbacks: {
+                  title: function(context) {
+                    return context[0].label;
+                  },
+                  label: function(context) {
+                    const dataIndex = context.dataIndex;
+                    const original = originalData[dataIndex];
+                    const percentage = context.parsed.x.toFixed(1);
+                    
+                    // statistics 정보 추가 - 배열로 반환하여 개행 처리
+                    let tooltipLines = [`${original.value} ${original.unit} (${percentage}%)`];
+                    if (original.statistics && original.statistics.count > 1) {
+                      const minFormatted = formatValue(original.statistics.min, original.unit);
+                      const maxFormatted = formatValue(original.statistics.max, original.unit);
+                      tooltipLines.push(`Runs: ${original.statistics.count}`);
+                      tooltipLines.push(`Min: ${minFormatted.value} ${minFormatted.unit}`);
+                      tooltipLines.push(`Max: ${maxFormatted.value} ${maxFormatted.unit}`);
+                      tooltipLines.push(`Std: ${original.statistics.std.toFixed(2)}`);
+                    }
+                    return tooltipLines;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { 
+                beginAtZero: true,
+                display: false, // X축 숨김
+                grid: { display: false },
+                border: { display: false } // X축 테두리 제거
+              },
+              y: { 
+                ticks: { 
+                  color: ticksColor,
+                  font: { size: 10 },
+                  maxTicksLimit: itemCount
+                }, 
+                grid: { color: gridColor, drawBorder: false }, // Y축 경계선 제거
+                border: { display: false } // Y축 테두리 제거
+              }
+            },
+            layout: {
+              padding: {
+                top: 25,
+                bottom: 40, // 하단 여백 증가
+                left: 220, // 테스트명 표시 공간 훨씬 더 확보
+                right: 50
+              }
+            }
+          }
+        });
+
+        // 차트 렌더링 완료 후 툴팁 요소 추가
+        setTimeout(() => {
+          const displayedTests = new Set();
+          chart.data.labels.forEach((label, index) => {
+            const meta = chart.getDatasetMeta(0);
+            const bar = meta.data[index];
+            if (bar) {
+              const testName = testLabels[index];
+              
+              if (!displayedTests.has(testName)) {
+                displayedTests.add(testName);
+                
+                // 테스트 설명 찾기
+                const testInfo = Object.entries(testData).find(([key, data]) => {
+                  const title = sanitizeTitle(key);
+                  return title === testName;
+                });
+                const description = testInfo ? testInfo[1].description : '';
+                
+                if (description) {
+                  // 툴팁 영역 생성
+                  const testTooltipArea = document.createElement('div');
+                  testTooltipArea.className = 'test-tooltip-area';
+                  testTooltipArea.style.left = '10px';
+                  testTooltipArea.style.top = (bar.y - 8) + 'px';
+                  testTooltipArea.style.width = '200px';
+                  testTooltipArea.style.height = '16px';
+                  testTooltipArea.title = description;
+                  
+                  container.appendChild(testTooltipArea);
+                }
+              }
+            }
+          });
+        }, 100);
+        
+        // 시스템별 하이라이트 함수
+        function highlightSystemBars(systemName, chart) {
+          console.log('highlightSystemBars called with:', systemName); // 디버깅용
+          if (highlightedSystem === systemName) {
+            // 동일한 시스템 클릭 시 하이라이트 해제
+            console.log('Resetting highlight'); // 디버깅용
+            resetHighlight(chart);
+          } else {
+            highlightedSystem = systemName;
+            highlightedIndex = -1; // 개별 인덱스 하이라이트 해제
+            
+            const systemIndices = systemIndexMap[systemName] || [];
+            const newBackgroundColors = originalBackgroundColors.map((color, index) => {
+              if (systemIndices.includes(index)) {
+                // 선택된 시스템의 모든 막대: 더 진하게
+                return color.replace('0.6', '0.9');
+              } else {
+                // 다른 시스템들: 흐리게
+                return color.replace('0.6', '0.2');
+              }
+            });
+            const newBorderColors = originalBorderColors.map((color, index) => {
+              if (systemIndices.includes(index)) {
+                return color; // 선택된 시스템: 원래 테두리
+              } else {
+                return color.replace('1)', '0.3)'); // 다른 시스템: 흐린 테두리
+              }
+            });
+            
+            chart.data.datasets[0].backgroundColor = newBackgroundColors;
+            chart.data.datasets[0].borderColor = newBorderColors;
+            chart.update('none');
+          }
+        }
+        
+        // 테스트별 시스템 하이라이트 함수
+        function highlightTestSystems(testName, chart) {
+          // 토글 기능: 동일한 테스트를 다시 클릭하면 하이라이트 해제
+          if (highlightedTest === testName) {
+            resetHighlight(chart);
+            highlightedTest = null;
+            // 모든 테스트 라벨 스타일 리셋
+            container.querySelectorAll('.test-label-overlay').forEach(label => {
+              label.style.backgroundColor = 'transparent';
+              label.style.color = '#1f2937';
+            });
+            return;
+          }
+          
+          // 해당 테스트에 속한 모든 시스템들 찾기
+          const testIndices = [];
+          testLabels.forEach((label, index) => {
+            if (label === testName) {
+              testIndices.push(index);
+            }
+          });
+          
+          if (testIndices.length > 0) {
+            highlightedSystem = null;
+            highlightedIndex = -1;
+            highlightedTest = testName;
+            
+            const newBackgroundColors = originalBackgroundColors.map((color, index) => {
+              if (testIndices.includes(index)) {
+                // 선택된 테스트의 모든 막대: 더 진하게
+                return color.replace('0.6', '0.9');
+              } else {
+                // 다른 테스트들: 흐리게
+                return color.replace('0.6', '0.2');
+              }
+            });
+            const newBorderColors = originalBorderColors.map((color, index) => {
+              if (testIndices.includes(index)) {
+                return color; // 선택된 테스트: 원래 테두리
+              } else {
+                return color.replace('1)', '0.3)'); // 다른 테스트: 흐린 테두리
+              }
+            });
+            
+            chart.data.datasets[0].backgroundColor = newBackgroundColors;
+            chart.data.datasets[0].borderColor = newBorderColors;
+            chart.update('none');
+            
+            // 모든 테스트 라벨 스타일 리셋 후 선택된 테스트만 하이라이트
+            container.querySelectorAll('.test-label-overlay').forEach(label => {
+              if (label.textContent === testName) {
+                label.style.backgroundColor = 'rgba(59, 130, 246, 0.8)';
+                label.style.color = 'white';
+              } else {
+                label.style.backgroundColor = 'transparent';
+                label.style.color = '#1f2937';
+              }
+            });
+          }
+        }
+        
+        // 하이라이트 초기화 함수
+        function resetHighlight(chart) {
+          highlightedIndex = -1;
+          highlightedSystem = null;
+          highlightedTest = null;
+          chart.data.datasets[0].backgroundColor = [...originalBackgroundColors];
+          chart.data.datasets[0].borderColor = [...originalBorderColors];
+          chart.update('none');
+        }
+        
+      }, 0);
+    }
+
+    function renderTableForTest(test, results, lowerIsBetter, bestValue) {
+      const title = sanitizeTitle(test);
+      let table = `<h2>${title}</h2><table style="font-size:12px;"><tr><th>System</th><th>Score</th><th>Unit</th><th>Statistics</th></tr>`;
+      results.forEach(r => {
+        const highlight = r.value === bestValue ? ' class="highlight"' : '';
+        let statsInfo = '-';
+        if (r.statistics && r.statistics.count > 1) {
+          const minFormatted = formatValue(r.statistics.min, r.unit);
+          const maxFormatted = formatValue(r.statistics.max, r.unit);
+          statsInfo = `${r.statistics.count} runs<br><small>Min: ${minFormatted.value} ${minFormatted.unit}<br>Max: ${maxFormatted.value} ${maxFormatted.unit}<br>Std: ${r.statistics.std.toFixed(2)}</small>`;
+        }
+        const formatted = formatValue(r.value, r.unit);
+        table += `<tr${highlight}><td>${r.system}</td><td class="score-cell">${formatted.value}</td><td>${formatted.unit}</td><td>${statsInfo}</td></tr>`;
+      });
+      table += '</table>';
+      tableContainer.innerHTML = table;
+      // no table tooltips
+    }
+
+    function renderAllScoreTables() {
+      const host = document.getElementById('tables-all');
+      host.innerHTML = '';
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'All Score Tables';
+      details.appendChild(summary);
+      const box = document.createElement('div');
+      box.style.marginTop = '6px';
+      box.style.display = 'grid';
+      box.style.gridTemplateColumns = '1fr';
+      box.style.gap = '8px';
+      details.appendChild(box);
+      host.appendChild(details);
+      // divider between controls and tables
+      const divider = document.createElement('div');
+      divider.className = 'section-divider';
+      host.appendChild(divider);
+
+      Object.entries(testData).forEach(([test, data]) => {
+        if (test.startsWith('_')) return;
+        // All Score Tables는 필터 무시하고 전체 결과를 표시
+        const results = (data.results || []);
+        if (results.length === 0) return;
+        const lowerIsBetter = /(hackbench|tensorflow|squeezenet)/i.test(test);
+        const bestValue = lowerIsBetter ? Math.min(...results.map(r => r.value)) : Math.max(...results.map(r => r.value));
+
+        const card = document.createElement('div');
+        card.className = 'chart-card';
+        card.style.padding = '6px 8px';
+        const h3 = document.createElement('h3');
+        h3.textContent = sanitizeTitle(test);
+        h3.style.margin = '4px 0 2px 0';
+        h3.style.fontSize = '14px';
+        card.appendChild(h3);
+
+        // table
+        const table = document.createElement('table');
+        table.style.fontSize = '12px';
+        table.style.margin = '4px 0 6px 0';
+        let html = '<tr><th>System</th><th>Score</th><th>Unit</th><th>Statistics</th></tr>';
+        results.forEach(r => {
+          const highlight = r.value === bestValue ? ' class="highlight"' : '';
+          let statsInfo = '-';
+          if (r.statistics && r.statistics.count > 1) {
+            const minFormatted = formatValue(r.statistics.min, r.unit);
+            const maxFormatted = formatValue(r.statistics.max, r.unit);
+            statsInfo = `${r.statistics.count} runs<br><small>Min: ${minFormatted.value} ${minFormatted.unit}<br>Max: ${maxFormatted.value} ${maxFormatted.unit}<br>Std: ${r.statistics.std?.toFixed(2) ?? '0.00'}</small>`;
+          }
+          const formatted = formatValue(r.value, r.unit);
+          html += `<tr${highlight}><td>${r.system}</td><td class="score-cell">${formatted.value}</td><td>${formatted.unit}</td><td>${statsInfo}</td></tr>`;
+        });
+        table.innerHTML = html;
+        // compact cell paddings
+        table.querySelectorAll('th,td').forEach(el => { el.style.padding = '6px 8px'; });
+        card.appendChild(table);
+        box.appendChild(card);
+        // no table tooltips
+      });
+    }
+
+    function renderNormalized() {
+      const summary = testData._normalized?.summary || [];
+      const tests = testData._normalized?.tests || [];
+      const filtered = summary.filter(r => activeSystems.has(r.system));
+      const sorted = filtered.sort((a, b) => extractCpuGen(a.system) - extractCpuGen(b.system));
+      let html = '<table><tr><th>System</th>' + tests.map(t => `<th>${t}</th>`).join('') + '<th>Avg</th></tr>';
+      sorted.forEach(row => {
+        html += `<tr><td>${row.system}</td>`;
+        tests.forEach(t => {
+          const v = row.scores[t];
+          let cls = '';
+          // 4단계 색 구분: 1.00=빨강, 1.01~1.49=주황, 1.50~1.99=파랑, 2.00+=초록
+          if (!v) {
+            cls = '';
+          } else if (v >= 2.0) {
+            cls = 'tier-best';
+          } else if (v >= 1.5) {
+            cls = 'tier-good';
+          } else if (v > 1.0) {
+            cls = 'tier-warn';
+          } else { // v === 1.0
+            cls = 'tier-base';
+          }
+          html += `<td class="${cls}">${v ? v.toFixed(2) : '-'}</td>`;
+        });
+        const avg = tests.reduce((sum, t) => row.scores[t] ? sum + row.scores[t] : sum, 0) / tests.length;
+        html += `<td><strong>${avg.toFixed(2)}</strong></td></tr>`;
+      });
+      html += '</table>';
+      summaryContainer.innerHTML = html;
+    }
+
+    init();
+  </script>
+</body>
+</html>
+
