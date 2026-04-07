@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-variant-ligatures: none;
+    -webkit-font-variant-ligatures: none;
+    scroll-behavior: smooth;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-900 border border-surface-700/50 rounded-xl;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border;
+  }
+
+  .btn {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+           transition-colors duration-150 cursor-pointer;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-slate-400 hover:text-slate-200 hover:bg-surface-800;
+  }
+
+  .section-title {
+    @apply flex items-center gap-2 text-lg font-semibold text-slate-100;
+  }
+
+  .stat-card {
+    @apply card p-4 flex flex-col gap-1;
+  }
+}
+
+/* ECharts tooltip dark override */
+.echarts-tooltip-dark {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+}

@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./results:/app/results:ro
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - RESULTS_DIR=/app/results
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Dev mode: separate frontend + backend
+  backend-dev:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./results:/app/results:ro
+      - ./backend/src:/app/src
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - RESULTS_DIR=/app/results
+    profiles:
+      - dev

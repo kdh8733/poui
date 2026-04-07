@@ -1,0 +1,14 @@
+node_modules
+frontend/node_modules
+backend/node_modules
+frontend/dist
+.git
+*.md
+*.xlsx
+stress-ng-guide.html
+template.html
+parser.js
+styles.css
+chart.js
+init.sh
+.env*
