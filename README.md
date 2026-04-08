@@ -1,4 +1,4 @@
-# 📊 서버 벤치마크 결과 분석 시스템
+# 📊 서버 벤치마크 결과 분석 시스템 (POUI)
 
 ## 🎯 프로젝트 개요
 약 500개 워크로드의 벤치마크 툴을 제공하는 툴킷.
@@ -6,21 +6,43 @@
 
 Phoronix Test Suite의 XML 결과를 처리하여 인터랙티브한 차트, 테이블, 비교 매트릭스를 제공합니다.
 
+---
+
+## 🖼️ UI 미리보기
+
+### 대시보드 — 정규화 점수 바 차트 & 워크로드별 레이더 차트
+![Dashboard](docs/screenshots/01_dashboard.png)
+
+### 성능 비교 매트릭스 — 시스템 간 히트맵 비교
+![Comparison Matrix](docs/screenshots/02_matrix.png)
+
+---
+
 ## 📁 프로젝트 구조
 ```
-├── parser.js             # 핵심 데이터 파싱 엔진
-├── template.html         # 메인 대시보드 템플릿
-├── styles.css            # 통합 스타일시트
-├── stress-ng-guide.html  # 벤치마크 가이드 문서
-├── init.sh               # 자동 배포 스크립트
-└── results/              # 벤치마크 결과 데이터
-    ├── stress-ng03/
-    ├── stress-ng04/
-    ├── nginx03/
-        ├── composite.xml # 테스트 결과 종합요약
-        ├── test-logs/    # 벤치마크 상세 결과
-        ├── system-logs   # 시스템 hostname, dmesg, log 등 테스트 시점 데이터
-        ..
+├── frontend/                   # React + TypeScript SPA
+│   ├── src/
+│   │   ├── components/         # Dashboard, BenchmarkSection, ComparisonMatrix, StressNGSection 등
+│   │   ├── hooks/              # SWR 기반 데이터 페칭
+│   │   ├── types/              # TypeScript 인터페이스
+│   │   ├── lib/                # 유틸리티 함수 (정규화, 포맷팅 등)
+│   │   └── data/               # Stress-NG 가이드 데이터 (52개 테스트 정의)
+│   ├── tailwind.config.js
+│   └── vite.config.ts
+├── backend/                    # Node.js Express API 서버
+│   └── src/
+│       ├── server.js           # REST API + SPA 서빙
+│       └── benchmarkParser.js  # XML 파싱 엔진 (2000+ 라인)
+├── results/                    # 벤치마크 결과 데이터 (Docker 볼륨 마운트)
+│   ├── stress-ng03/
+│   ├── nginx03/
+│   │   ├── composite.xml       # 테스트 결과 종합요약
+│   │   ├── test-logs/          # 벤치마크 상세 결과
+│   │   └── system-logs/        # hostname, dmesg, meminfo 등
+│   └── ..
+├── Dockerfile                  # 멀티스테이지 빌드 (frontend + backend)
+├── docker-compose.yml
+└── dev.sh                      # 로컬 개발 실행 스크립트
 ```
 
 ## 📁 벤치마크 workload List
@@ -28,44 +50,81 @@ Phoronix Test Suite의 XML 결과를 처리하여 인터랙티브한 차트, 테
 ┌─ Nginx
 ├─ Apache HTTP
 ├─ Apache Hadoop
-├─ Sysbench (CPU)
+├─ Sysbench (CPU / Memory)
 ├─ MBW (Memory)
-├─ Stress-NG (다양한 CPU/Memory 등 연산·성능)
+├─ Stress-NG (다양한 CPU/Memory 등 연산·성능, 52개 테스트)
 ├─ etcd
-├─ openssl
+├─ OpenSSL
 ├─ IOR (Disk IO)
 └─ .. (추후 추가)
 ```
 
-### 🚀 핵심 기능
-- **자동 데이터 파싱**: XML 벤치마크 결과를 자동으로 분석하여 구조화된 데이터로 변환
-- **인터랙티브 시각화**: Chart.js 기반의 동적 차트와 반응형 테이블
-- **스마트 그룹화**: stress-ng 테스트를 벤치마킹 특성별로 자동 분류
-- **성능 비교 매트릭스**: 시스템 간 정규화된 성능 비교 및 티어 시스템
-- **반응형 디자인**: 모든 디바이스에서 최적화된 사용자 경험
+---
+
+## 🚀 핵심 기능
+
+- **자동 데이터 파싱**: PTS XML 결과를 자동으로 분석하여 구조화된 데이터로 변환
+- **인터랙티브 시각화**: ECharts 기반 바 차트, 레이더 차트, 히트맵
+- **성능 비교 매트릭스**: 시스템 간 정규화 점수 히트맵 (색상 티어 시스템)
+- **Stress-NG 심화 분석**: 52개 테스트를 10개 그룹으로 자동 분류 + 가이드 모달
+- **시스템 정보 패널**: CPU, 메모리, 디스크, OS, 커널, 컴파일러 등 하드웨어 스펙 카드
+- **동적 시스템 필터**: 비교 대상을 토글 pill로 즉시 전환
+- **실시간 데이터 갱신**: `/api/refresh` 엔드포인트로 파싱 결과 즉시 업데이트
+- **반응형 다크 테마**: Tailwind CSS 기반 완전 다크 UI
+
+---
 
 ## 🛠 기술 스택
-- **Backend**: Node.js, fast-xml-parser
-- **Frontend**: Vanilla JavaScript, Chart.js, HTML5, CSS3
-- **Data Processing**: 통계 분석, 정규화, 성능 최적화
-- **Infrastructure**: Nginx, Linux 환경
 
-## 📈 주요 성과
+| 영역 | 기술 |
+|------|------|
+| Frontend | React 18, TypeScript 5, Vite, Tailwind CSS |
+| 차트 | ECharts 5 (echarts-for-react) |
+| 데이터 페칭 | SWR |
+| Backend | Node.js 20, Express 4 |
+| XML 파싱 | fast-xml-parser 5 |
+| 컨테이너 | Docker (멀티스테이지 빌드), Docker Compose |
 
-- ### 기존의 복잡하고 산재된 데이터를 일원화 / 시각화
-- ### 다양한 워크로드 테스트 결과를 쉽게 볼 수 있도록 단순화
-- ### 매번 일관된 옵션의 벤치마킹 수행할 수 있도록 Test-suite custom
-- ### 동적으로 비교 대상을 볼 수 있도록 필터/검색 기능 제공
-- ### 확장성을 고려한 동적 Parser 사용
+---
+
+## 🚢 실행 방법
+
+### 프로덕션 (Docker)
+```bash
+docker compose up -d
+# http://localhost:3000
+```
+
+### 개발 모드
+```bash
+bash dev.sh
+# backend: http://localhost:3001
+# frontend: http://localhost:5173 (Vite HMR)
+```
+
+`results/` 디렉토리에 PTS XML 결과를 넣으면 자동으로 파싱됩니다.
+
+---
+
+## 🔌 API 엔드포인트
+
+| 엔드포인트 | 메서드 | 설명 |
+|-----------|--------|------|
+| `/api/health` | GET | 서버 상태, 캐시 정보 |
+| `/api/data` | GET | 전체 벤치마크 데이터 (파싱 결과) |
+| `/api/refresh` | POST | 캐시 초기화 + 재파싱 |
+| `/api/systems` | GET | 시스템 목록 + 스펙 |
+
+---
 
 ## 💡 핵심 알고리즘
 
-### 성능 정규화 알고리즘
+### 성능 정규화
 ```javascript
 // 최저 성능을 1.0 기준으로 하는 상대적 성능 계산
-const normalizedScore = isLatencyTest ? 
-    (worstValue / currentValue) : 
-    (currentValue / worstValue);
+const normalizedScore = isLatencyTest
+    ? (worstValue / currentValue)   // 낮을수록 좋은 지표 (latency)
+    : (currentValue / worstValue);  // 높을수록 좋은 지표 (throughput)
 ```
 
 ### 동적 단위 변환
@@ -74,7 +133,7 @@ function formatValue(value, unit) {
     if (value >= 1e9) return { value: (value/1e9).toFixed(2), unit: 'G' + unit };
     if (value >= 1e6) return { value: (value/1e6).toFixed(2), unit: 'M' + unit };
     if (value >= 1e3) return { value: (value/1e3).toFixed(2), unit: 'K' + unit };
-    return { value: value.toFixed(2), unit: unit };
+    return { value: value.toFixed(2), unit };
 }
 ```
 
@@ -87,62 +146,28 @@ function normalizeMemoryString(memoryStr, logsDir) {
 }
 ```
 
-## 🏆 주요 특징
+---
 
-### 1. 확장성 있는 아키텍처
-- 모듈화된 파서로 새로운 벤치마크 도구 쉽게 추가 가능
-- 플러그인 방식의 시각화 컴포넌트
-- RESTful API 구조로 외부 시스템 연동 용이
+## 📈 주요 성과
 
-### 2. 고급 데이터 분석
-- 통계적 이상치 탐지 및 처리
-- 다중 실행 결과의 평균, 표준편차, 신뢰구간 계산
-- 시스템 간 성능 상관관계 분석
+- **데이터 일원화**: 복잡하고 산재된 벤치마크 데이터를 단일 대시보드로 시각화
+- **표준화된 벤치마킹**: 매번 일관된 옵션으로 Test-suite 수행
+- **동적 비교**: 필터/검색으로 비교 대상을 즉시 전환
+- **확장 가능한 파서**: 새로운 워크로드를 쉽게 추가할 수 있는 모듈형 구조
 
-### 3. 사용자 중심 인터페이스
-- 원클릭 전체 테이블 확장/축소
-- 실시간 검색 및 필터링
-- 키보드 단축키 지원
-- 접근성 준수 (WCAG 2.1 AA)
+---
 
-## 📊 성능 지표
-- **처리 속도**: 100개 테스트 결과를 3초 내 파싱 및 시각화
-- **메모리 효율성**: 대용량 데이터셋 처리 시 메모리 사용량 50% 절감
-- **사용자 경험**: 모든 인터랙션 100ms 이내 응답
-- **호환성**: Chrome, Firefox, Safari, Edge 최신 3개 버전 지원
+## 🗺️ 향후 발전 계획
 
-## 🔧 기술적 도전과 해결
+상세 로드맵은 [ROADMAP.md](ROADMAP.md)를 참고하세요.
 
-### 1. 정규식 이스케이핑 문제
-**문제**: 템플릿 문자열 내 정규식이 잘못 렌더링되는 이슈
-
-**해결**: JavaScript 템플릿 리터럴에서 백슬래시 이중 이스케이핑 적용
-
-### 2. 대용량 데이터 처리
-**문제**: 수백 개의 벤치마크 결과 처리 시 브라우저 성능 저하
-
-**해결**: 
-- 데이터 외부화 및 지연 로딩
-- 가상 스크롤링으로 DOM 노드 수 제한
-- Web Worker를 활용한 백그라운드 계산
-
-## 🎨 UI/UX 디자인 철학
-- **미니멀리즘**: 불필요한 요소 제거로 데이터에 집중
-- **계층적 정보 구조**: 접기/펼치기로 복잡성 관리
-- **일관성**: 모든 컴포넌트에서 통일된 디자인 언어
-- **접근성**: 색상뿐만 아니라 패턴과 텍스트로도 정보 전달
-
-## 🚀 향후 발전 계획
-1. **AI 기반 성능 분석**: 머신러닝을 활용한 성능 병목 지점 자동 탐지
-2. **실시간 모니터링**: WebSocket을 통한 라이브 벤치마크 결과 스트리밍
-3. **클라우드 확장**: AWS/Azure 기반 대규모 벤치마크 분석 플랫폼
-4. **모바일 앱**: React Native 기반 모바일 버전 개발
-
-## 🏅 기술적 성취
-- **코드 품질**: ESLint 기준 0 에러, 95% 테스트 커버리지
-- **작업 간소화**: 성능측정 및 부하테스트 작업 간소화 및 표준 수립
-- **UI 시각화**: 이해하기 쉬운 UI 구현
-- **문서화**: JSDoc 기반 완전한 API 문서화
+| 버전 | 목표 시기 | 핵심 목표 |
+|------|----------|-----------|
+| v1.1 | Q2 2026  | Redis, PostgreSQL 등 워크로드 추가, PDF 내보내기 |
+| v1.2 | Q3 2026  | 백엔드 DB 연동, 히스토리 관리, API 문서화 |
+| v2.0 | Q4 2026  | WebSocket 실시간 모니터링, CI/CD 통합 |
+| v2.5 | Q1 2027  | ML 기반 이상 탐지 및 성능 예측 |
+| v3.0 | Q3 2027  | 클라우드 플랫폼 (AWS/Azure/GCP) |
 
 ---
 
