@@ -161,13 +161,14 @@ function normalizeMemoryString(memoryStr, logsDir) {
 
 상세 로드맵은 [ROADMAP.md](ROADMAP.md)를 참고하세요.
 
-| 버전 | 목표 시기 | 핵심 목표 |
-|------|----------|-----------|
-| v1.1 | Q2 2026  | Redis, PostgreSQL 등 워크로드 추가, PDF 내보내기 |
-| v1.2 | Q3 2026  | 백엔드 DB 연동, 히스토리 관리, API 문서화 |
-| v2.0 | Q4 2026  | WebSocket 실시간 모니터링, CI/CD 통합 |
-| v2.5 | Q1 2027  | ML 기반 이상 탐지 및 성능 예측 |
-| v3.0 | Q3 2027  | 클라우드 플랫폼 (AWS/Azure/GCP) |
+| 버전 | 핵심 목표 |
+|------|-----------|
+| v1.1 | Redis, PostgreSQL 등 워크로드 추가, PDF 내보내기 |
+| v1.2 | **전력 데이터 수집/시각화** — IPMI/BMC 기반 소비전력 연동 및 워크로드별 전력 효율 분석 |
+| v1.3 | **시스템 검수 표준화** — 벤치마크 결과를 검수 기준값과 비교하여 Pass/Fail 판정 및 표준 리포트 생성 |
+| v2.0 | 백엔드 DB 연동, 히스토리 관리, WebSocket 실시간 모니터링 |
+| v2.5 | ML 기반 이상 탐지 및 성능 예측 |
+| v3.0 | 클라우드 플랫폼 (AWS/Azure/GCP) |
 
 ---
 
