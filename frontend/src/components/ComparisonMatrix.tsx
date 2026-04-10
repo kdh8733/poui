@@ -55,7 +55,7 @@ export default function ComparisonMatrix({ data, activeSystems }: Props) {
             <select
               value={groupFilter}
               onChange={(e) => setGroupFilter(e.target.value)}
-              className="bg-surface-800 border border-surface-700 rounded-lg px-2 py-1 text-slate-300 text-xs"
+              className="bg-white dark:bg-surface-800 border border-slate-300 dark:border-surface-700 rounded-lg px-2 py-1 text-slate-700 dark:text-slate-300 text-xs transition-colors duration-200"
             >
               <option value="all">전체</option>
               {groups.map((g) => <option key={g.id} value={g.id}>{g.icon} {g.label}</option>)}
@@ -74,7 +74,7 @@ export default function ComparisonMatrix({ data, activeSystems }: Props) {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
+      <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
         {[
           { color: "#fca5a5", label: "1.00 (기준)" },
           { color: "#fdba74", label: "1.01 ~ 1.49" },
@@ -86,30 +86,30 @@ export default function ComparisonMatrix({ data, activeSystems }: Props) {
             <span>{item.label}</span>
           </div>
         ))}
-        <span className="text-slate-600 ml-2">최저값 기준 정규화 (낮을수록 = 1.0)</span>
+        <span className="text-slate-400 dark:text-slate-600 ml-2">최저값 기준 정규화 (낮을수록 = 1.0)</span>
       </div>
 
       <div className="card overflow-x-auto">
         <table className="w-full text-xs border-collapse">
           <thead>
-            <tr className="border-b border-surface-700">
-              <th className="px-3 py-2.5 text-left text-slate-400 font-medium sticky left-0 bg-surface-900 z-10 min-w-[200px]">
+            <tr className="border-b border-slate-200 dark:border-surface-700">
+              <th className="px-3 py-2.5 text-left text-slate-600 dark:text-slate-400 font-medium sticky left-0 bg-white dark:bg-surface-900 z-10 min-w-[200px] transition-colors duration-200">
                 테스트
               </th>
               {sortedSystems.map((sys) => (
-                <th key={sys} className="px-2 py-2.5 text-center font-medium text-slate-300 min-w-[100px]">
+                <th key={sys} className="px-2 py-2.5 text-center font-medium text-slate-700 dark:text-slate-300 min-w-[100px]">
                   <div className="whitespace-nowrap">{shortSystemName(sys)}</div>
-                  <div className="text-[10px] text-slate-500 font-normal">{data.specs[sys]?.Vendor}</div>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">{data.specs[sys]?.Vendor}</div>
                 </th>
               ))}
             </tr>
             {/* Average row */}
-            <tr className="border-b border-surface-700 bg-surface-800/50">
-              <td className="px-3 py-2 sticky left-0 bg-surface-800/80 font-semibold text-slate-300">
+            <tr className="border-b border-slate-200 dark:border-surface-700 bg-slate-50 dark:bg-surface-800/50">
+              <td className="px-3 py-2 sticky left-0 bg-slate-100 dark:bg-surface-800/80 font-semibold text-slate-700 dark:text-slate-300 transition-colors duration-200">
                 📊 평균 점수
               </td>
               {sortedSystems.map((sys) => (
-                <td key={sys} className="px-2 py-2 text-center font-mono font-semibold text-slate-200">
+                <td key={sys} className="px-2 py-2 text-center font-mono font-semibold text-slate-800 dark:text-slate-200">
                   {avgScores[sys].toFixed(3)}
                 </td>
               ))}
@@ -121,18 +121,18 @@ export default function ComparisonMatrix({ data, activeSystems }: Props) {
               return (
                 <tr
                   key={testName}
-                  className={`border-b border-surface-700/30 hover:bg-surface-800/30 transition-colors ${idx % 2 === 0 ? "" : "bg-surface-800/10"}`}
+                  className={`border-b border-slate-100 dark:border-surface-700/30 hover:bg-slate-50 dark:hover:bg-surface-800/30 transition-colors ${idx % 2 === 0 ? "" : "bg-slate-50/60 dark:bg-surface-800/10"}`}
                 >
                   <td
-                    className="px-3 py-2 text-slate-400 sticky left-0 bg-surface-900 hover:bg-surface-800 z-10 border-r border-surface-700/30"
+                    className="px-3 py-2 text-slate-500 dark:text-slate-400 sticky left-0 bg-white dark:bg-surface-900 hover:bg-slate-50 dark:hover:bg-surface-800 z-10 border-r border-slate-100 dark:border-surface-700/30 transition-colors duration-200"
                     title={td?.description}
                   >
                     <div className="truncate max-w-[200px]">{testName}</div>
-                    {td?.proportion === "LIB" && <span className="text-[9px] text-orange-400">↓LIB</span>}
+                    {td?.proportion === "LIB" && <span className="text-[9px] text-orange-500 dark:text-orange-400">↓LIB</span>}
                   </td>
                   {sortedSystems.map((sys) => {
                     const score = data.normalized[sys]?.[testName];
-                    if (score == null) return <td key={sys} className="px-2 py-2 text-center text-slate-600">—</td>;
+                    if (score == null) return <td key={sys} className="px-2 py-2 text-center text-slate-300 dark:text-slate-600">—</td>;
                     const bg = getNormalizedColor(score);
                     return (
                       <td key={sys} className="px-2 py-2 text-center font-mono">

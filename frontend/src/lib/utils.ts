@@ -48,7 +48,7 @@ export function getVendorBadgeClass(vendor: string): string {
     LENOVO: "bg-red-600/20 text-red-300 border-red-600/30",
     SUPERMICRO: "bg-orange-600/20 text-orange-300 border-orange-600/30",
   };
-  return classes[vendor] || "bg-purple-600/20 text-purple-300 border-purple-600/30";
+  return classes[vendor] || "bg-blue-600/20 text-blue-300 border-blue-600/30";
 }
 
 export function buildWorkloadGroups(data: BenchmarkData): WorkloadGroup[] {
@@ -127,4 +127,27 @@ export function getSystemColors(systems: string[]): Record<string, string> {
 export function shortSystemName(fullName: string): string {
   // "Intel Xeon 6740E / DELL" → "Xeon 6740E / DELL"
   return fullName.replace(/^Intel\s+/i, "").replace(/^AMD\s+/i, "");
+}
+
+export function getChartTheme(isDark: boolean) {
+  return {
+    tooltip: {
+      bg: isDark ? "#1e293b" : "#ffffff",
+      border: isDark ? "#334155" : "#e2e8f0",
+      text: isDark ? "#e2e8f0" : "#1e293b",
+      subtext: isDark ? "#94a3b8" : "#475569",
+    },
+    axis: {
+      label: isDark ? "#94a3b8" : "#64748b",
+      faint: isDark ? "#64748b" : "#94a3b8",
+    },
+    splitLine: isDark ? "#1e293b" : "#f1f5f9",
+    axisLine: isDark ? "#334155" : "#e2e8f0",
+    legend: isDark ? "#94a3b8" : "#475569",
+    radar: {
+      splitLine: isDark ? "#1e293b" : "#e2e8f0",
+      axisLine: isDark ? "#334155" : "#d1d5db",
+      name: isDark ? "#94a3b8" : "#475569",
+    },
+  };
 }

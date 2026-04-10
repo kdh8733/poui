@@ -10,11 +10,19 @@ Phoronix Test Suite의 XML 결과를 처리하여 인터랙티브한 차트, 테
 
 ## 🖼️ UI 미리보기
 
-### 대시보드 — 정규화 점수 바 차트 & 워크로드별 레이더 차트
-![Dashboard](docs/screenshots/01_dashboard.png)
+### 라이트 모드 — 대시보드 (정규화 점수 바 차트 & 워크로드별 레이더 차트)
+![Dashboard Light](docs/screenshots/01_dashboard_light.png)
 
-### 성능 비교 매트릭스 — 시스템 간 히트맵 비교
-![Comparison Matrix](docs/screenshots/02_matrix.png)
+### 다크 모드 — 대시보드
+![Dashboard Dark](docs/screenshots/03_dashboard_dark.png)
+
+### 라이트 모드 — 정규화 비교 매트릭스
+![Matrix Light](docs/screenshots/02_matrix_light.png)
+
+### 다크 모드 — 정규화 비교 매트릭스
+![Matrix Dark](docs/screenshots/04_matrix_dark.png)
+
+> 사이드바 하단 **☀️ / 🌙 버튼**으로 라이트/다크 모드 전환 (기본값: 라이트 모드, localStorage 저장)
 
 ---
 
@@ -23,16 +31,16 @@ Phoronix Test Suite의 XML 결과를 처리하여 인터랙티브한 차트, 테
 ├── frontend/                   # React + TypeScript SPA
 │   ├── src/
 │   │   ├── components/         # Dashboard, BenchmarkSection, ComparisonMatrix, StressNGSection 등
-│   │   ├── hooks/              # SWR 기반 데이터 페칭
+│   │   ├── hooks/              # SWR 기반 데이터 페칭, 테마 관리
 │   │   ├── types/              # TypeScript 인터페이스
-│   │   ├── lib/                # 유틸리티 함수 (정규화, 포맷팅 등)
+│   │   ├── lib/                # 유틸리티 함수 (정규화, 포맷팅, 차트 테마 등)
 │   │   └── data/               # Stress-NG 가이드 데이터 (52개 테스트 정의)
 │   ├── tailwind.config.js
 │   └── vite.config.ts
 ├── backend/                    # Node.js Express API 서버
 │   └── src/
 │       ├── server.js           # REST API + SPA 서빙
-│       └── benchmarkParser.js  # XML 파싱 엔진 (2000+ 라인)
+│       └── benchmarkParser.js  # XML 파싱 엔진
 ├── results/                    # 벤치마크 결과 데이터 (Docker 볼륨 마운트)
 │   ├── stress-ng03/
 │   ├── nginx03/
@@ -66,11 +74,11 @@ Phoronix Test Suite의 XML 결과를 처리하여 인터랙티브한 차트, 테
 - **자동 데이터 파싱**: PTS XML 결과를 자동으로 분석하여 구조화된 데이터로 변환
 - **인터랙티브 시각화**: ECharts 기반 바 차트, 레이더 차트, 히트맵
 - **성능 비교 매트릭스**: 시스템 간 정규화 점수 히트맵 (색상 티어 시스템)
-- **Stress-NG 심화 분석**: 52개 테스트를 10개 그룹으로 자동 분류 + 가이드 모달
+- **Stress-NG 심화 분석**: 52개 테스트를 5개 그룹으로 자동 분류 + 가이드 모달
 - **시스템 정보 패널**: CPU, 메모리, 디스크, OS, 커널, 컴파일러 등 하드웨어 스펙 카드
 - **동적 시스템 필터**: 비교 대상을 토글 pill로 즉시 전환
 - **실시간 데이터 갱신**: `/api/refresh` 엔드포인트로 파싱 결과 즉시 업데이트
-- **반응형 다크 테마**: Tailwind CSS 기반 완전 다크 UI
+- **라이트/다크 테마**: 사이드바 토글로 전환, 기본값 라이트 모드, localStorage 저장
 
 ---
 

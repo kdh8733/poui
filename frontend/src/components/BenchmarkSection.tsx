@@ -1,15 +1,16 @@
 import { useState, useMemo } from "react";
 import ReactECharts from "echarts-for-react";
 import type { BenchmarkData, WorkloadGroup } from "../types/benchmark";
-import { shortSystemName, formatValue, getSystemColors } from "../lib/utils";
+import { shortSystemName, formatValue, getSystemColors, getChartTheme } from "../lib/utils";
 
 interface Props {
   group: WorkloadGroup;
   data: BenchmarkData;
   activeSystems: Set<string>;
+  isDark: boolean;
 }
 
-export default function BenchmarkSection({ group, data, activeSystems }: Props) {
+export default function BenchmarkSection({ group, data, activeSystems, isDark }: Props) {
   const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"charts" | "table">("charts");
   const colors = getSystemColors(data.systems);
@@ -36,8 +37,8 @@ export default function BenchmarkSection({ group, data, activeSystems }: Props) 
         <div className="flex items-center gap-3">
           <span className="text-2xl">{group.icon}</span>
           <div>
-            <h2 className="text-lg font-semibold text-slate-100">{group.label}</h2>
-            <p className="text-xs text-slate-500">{tests.length}개 테스트</p>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{group.label}</h2>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{tests.length}개 테스트</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -72,6 +73,7 @@ export default function BenchmarkSection({ group, data, activeSystems }: Props) 
                 setExpandedTests(next);
               }}
               groupColor={group.color}
+              isDark={isDark}
             />
           ))}
         </div>
@@ -88,6 +90,7 @@ function TestCard({
   expanded,
   onToggle,
   groupColor,
+  isDark,
 }: {
   testName: string;
   testData: NonNullable<BenchmarkData["tests"][string]>;
@@ -96,10 +99,12 @@ function TestCard({
   expanded: boolean;
   onToggle: () => void;
   groupColor: string;
+  isDark: boolean;
 }) {
   const filteredResults = testData.results.filter((r) => activeSystems.has(r.system));
   const lowerIsBetter = testData.proportion === "LIB";
   const unit = filteredResults[0]?.unit || "";
+  const ct = getChartTheme(isDark);
 
   const sorted = [...filteredResults].sort((a, b) =>
     lowerIsBetter ? a.value - b.value : b.value - a.value
@@ -122,9 +127,9 @@ function TestCard({
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        backgroundColor: "#1e293b",
-        borderColor: "#334155",
-        textStyle: { color: "#e2e8f0", fontSize: 12 },
+        backgroundColor: ct.tooltip.bg,
+        borderColor: ct.tooltip.border,
+        textStyle: { color: ct.tooltip.text, fontSize: 12 },
         formatter: (params: any[]) => {
           const p = params[0];
           const r = filteredResults.find((x) => shortSystemName(x.system) === p.name);
@@ -132,24 +137,24 @@ function TestCard({
           let html = `<div style="font-weight:600;margin-bottom:6px">${p.name}</div>`;
           html += `<div>값: <b>${formatValue(r?.value || 0, unit)}</b></div>`;
           if (r?.statistics) {
-            html += `<div style="margin-top:4px;font-size:11px;color:#94a3b8">`;
+            html += `<div style="margin-top:4px;font-size:11px;color:${ct.tooltip.subtext}">`;
             html += `min: ${formatValue(r.statistics.min, unit)} | max: ${formatValue(r.statistics.max, unit)}`;
             html += `</div>`;
           }
-          html += `<div style="font-size:11px;color:#94a3b8">비율: ${ratio.toFixed(3)}x</div>`;
+          html += `<div style="font-size:11px;color:${ct.tooltip.subtext}">비율: ${ratio.toFixed(3)}x</div>`;
           return html;
         },
       },
       grid: { left: "2%", right: "6%", top: "4%", bottom: "4%", containLabel: true },
       xAxis: {
         type: "value",
-        axisLabel: { color: "#64748b", fontSize: 10 },
-        splitLine: { lineStyle: { color: "#1e293b" } },
+        axisLabel: { color: ct.axis.faint, fontSize: 10 },
+        splitLine: { lineStyle: { color: ct.splitLine } },
       },
       yAxis: {
         type: "category",
         data: yLabels,
-        axisLabel: { color: "#94a3b8", fontSize: 11 },
+        axisLabel: { color: ct.axis.label, fontSize: 11 },
         inverse: false,
       },
       series: [{
@@ -162,13 +167,14 @@ function TestCard({
         label: {
           show: true,
           position: "right",
-          color: "#94a3b8",
+          color: ct.axis.label,
           fontSize: 10,
           formatter: (p: any) => formatValue(p.value, unit),
         },
       }],
     };
-  }, [filteredResults, lowerIsBetter, groupColor, colors, unit]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredResults, lowerIsBetter, groupColor, colors, unit, isDark]);
 
   const chartH = Math.max(120, sorted.length * 32 + 40);
 
@@ -176,42 +182,42 @@ function TestCard({
     <div className="card overflow-hidden">
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-800/50 transition-colors text-left"
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-surface-800/50 transition-colors text-left"
       >
         <div className="w-1 rounded-full self-stretch" style={{ backgroundColor: groupColor, minHeight: 20 }} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-slate-200 text-sm">{testName}</span>
-            <span className="text-xs text-slate-500">{unit}</span>
-            <span className={`badge text-[10px] ${lowerIsBetter ? "bg-orange-500/20 text-orange-400 border-orange-500/30" : "bg-green-500/20 text-green-400 border-green-500/30"}`}>
+            <span className="font-medium text-slate-800 dark:text-slate-200 text-sm">{testName}</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">{unit}</span>
+            <span className={`badge text-[10px] ${lowerIsBetter ? "bg-orange-500/20 text-orange-500 dark:text-orange-400 border-orange-500/30" : "bg-green-500/20 text-green-600 dark:text-green-400 border-green-500/30"}`}>
               {lowerIsBetter ? "↓ LIB" : "↑ HIB"}
             </span>
           </div>
           {testData.description && (
-            <div className="text-xs text-slate-500 truncate mt-0.5">{testData.description}</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5">{testData.description}</div>
           )}
         </div>
-        <div className="flex items-center gap-4 shrink-0 text-xs text-slate-400">
+        <div className="flex items-center gap-4 shrink-0 text-xs text-slate-500 dark:text-slate-400">
           {best && (
             <div className="text-right">
-              <div className="text-[10px] text-slate-500">최고</div>
-              <div className="font-mono text-green-400">{formatValue(best.value, unit)}</div>
-              <div className="text-[10px] text-slate-500">{shortSystemName(best.system)}</div>
+              <div className="text-[10px] text-slate-400 dark:text-slate-500">최고</div>
+              <div className="font-mono text-green-600 dark:text-green-400">{formatValue(best.value, unit)}</div>
+              <div className="text-[10px] text-slate-400 dark:text-slate-500">{shortSystemName(best.system)}</div>
             </div>
           )}
           {worst && worst.system !== best?.system && (
             <div className="text-right">
-              <div className="text-[10px] text-slate-500">최저</div>
-              <div className="font-mono text-red-400">{formatValue(worst.value, unit)}</div>
-              <div className="text-[10px] text-slate-500">{shortSystemName(worst.system)}</div>
+              <div className="text-[10px] text-slate-400 dark:text-slate-500">최저</div>
+              <div className="font-mono text-red-500 dark:text-red-400">{formatValue(worst.value, unit)}</div>
+              <div className="text-[10px] text-slate-400 dark:text-slate-500">{shortSystemName(worst.system)}</div>
             </div>
           )}
-          <span className="text-slate-600 ml-2">{expanded ? "▲" : "▼"}</span>
+          <span className="text-slate-400 dark:text-slate-600 ml-2">{expanded ? "▲" : "▼"}</span>
         </div>
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 border-t border-surface-700/30 pt-3">
+        <div className="px-4 pb-4 border-t border-slate-200 dark:border-surface-700/30 pt-3">
           <ReactECharts option={chartOption} style={{ height: chartH + "px" }} />
         </div>
       )}
@@ -235,9 +241,9 @@ function TableView({
     <div className="card overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-surface-700">
-            <th className="px-4 py-2 text-left text-slate-400 font-medium">테스트</th>
-            <th className="px-3 py-2 text-left text-slate-400 font-medium text-xs">단위</th>
+          <tr className="border-b border-slate-200 dark:border-surface-700">
+            <th className="px-4 py-2 text-left text-slate-600 dark:text-slate-400 font-medium">테스트</th>
+            <th className="px-3 py-2 text-left text-slate-600 dark:text-slate-400 font-medium text-xs">단위</th>
             {systems.map((s) => (
               <th key={s} className="px-3 py-2 text-right font-medium text-xs" style={{ color: colors[s] }}>
                 {shortSystemName(s)}
@@ -251,13 +257,13 @@ function TableView({
             if (!td) return null;
             const unit = td.results[0]?.unit || "";
             return (
-              <tr key={testName} className="border-b border-surface-700/30 hover:bg-surface-800/30">
-                <td className="px-4 py-2 text-slate-300 text-xs">{testName}</td>
-                <td className="px-3 py-2 text-slate-500 text-xs font-mono">{unit}</td>
+              <tr key={testName} className="border-b border-slate-100 dark:border-surface-700/30 hover:bg-slate-50 dark:hover:bg-surface-800/30 transition-colors">
+                <td className="px-4 py-2 text-slate-700 dark:text-slate-300 text-xs">{testName}</td>
+                <td className="px-3 py-2 text-slate-400 dark:text-slate-500 text-xs font-mono">{unit}</td>
                 {systems.map((sys) => {
                   const r = td.results.find((x) => x.system === sys);
                   return (
-                    <td key={sys} className="px-3 py-2 text-right font-mono text-xs text-slate-300">
+                    <td key={sys} className="px-3 py-2 text-right font-mono text-xs text-slate-700 dark:text-slate-300">
                       {r ? formatValue(r.value, unit) : "—"}
                     </td>
                   );

@@ -1,17 +1,19 @@
 import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
 import type { BenchmarkData } from "../types/benchmark";
-import { shortSystemName, getSystemColors, buildWorkloadGroups } from "../lib/utils";
+import { shortSystemName, getSystemColors, buildWorkloadGroups, getChartTheme } from "../lib/utils";
 
 interface Props {
   data: BenchmarkData;
   activeSystems: Set<string>;
+  isDark: boolean;
 }
 
-export default function Dashboard({ data, activeSystems }: Props) {
+export default function Dashboard({ data, activeSystems, isDark }: Props) {
   const filtered = data.systems.filter((s) => activeSystems.has(s));
   const colors = getSystemColors(data.systems);
   const groups = buildWorkloadGroups(data);
+  const ct = getChartTheme(isDark);
 
   // Overall avg score bar chart
   const overallOption = useMemo(() => {
@@ -24,20 +26,24 @@ export default function Dashboard({ data, activeSystems }: Props) {
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        backgroundColor: "#1e293b",
-        borderColor: "#334155",
-        textStyle: { color: "#e2e8f0", fontSize: 12 },
+        backgroundColor: ct.tooltip.bg,
+        borderColor: ct.tooltip.border,
+        textStyle: { color: ct.tooltip.text, fontSize: 12 },
         formatter: (params: any[]) => {
           const p = params[0];
           return `<div style="font-weight:600;margin-bottom:4px">${p.name}</div>Normalized Avg: <b>${p.value.toFixed(3)}</b>`;
         },
       },
       grid: { left: "2%", right: "4%", top: "4%", bottom: "4%", containLabel: true },
-      xAxis: { type: "value", axisLabel: { color: "#64748b", fontSize: 11 }, splitLine: { lineStyle: { color: "#1e293b" } } },
+      xAxis: {
+        type: "value",
+        axisLabel: { color: ct.axis.faint, fontSize: 11 },
+        splitLine: { lineStyle: { color: ct.splitLine } },
+      },
       yAxis: {
         type: "category",
         data: scores.map((s) => shortSystemName(s.system)),
-        axisLabel: { color: "#94a3b8", fontSize: 11 },
+        axisLabel: { color: ct.axis.label, fontSize: 11 },
         inverse: true,
       },
       series: [{
@@ -47,10 +53,17 @@ export default function Dashboard({ data, activeSystems }: Props) {
           itemStyle: { color: colors[s.system], borderRadius: [0, 4, 4, 0] },
         })),
         barMaxWidth: 28,
-        label: { show: true, position: "right", color: "#94a3b8", fontSize: 11, formatter: (p: any) => p.value.toFixed(3) },
+        label: {
+          show: true,
+          position: "right",
+          color: ct.axis.label,
+          fontSize: 11,
+          formatter: (p: any) => p.value.toFixed(3),
+        },
       }],
     };
-  }, [data, activeSystems, colors]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, activeSystems, colors, isDark]);
 
   // Radar chart per workload group
   const radarOption = useMemo(() => {
@@ -74,24 +87,29 @@ export default function Dashboard({ data, activeSystems }: Props) {
 
     return {
       backgroundColor: "transparent",
-      tooltip: { backgroundColor: "#1e293b", borderColor: "#334155", textStyle: { color: "#e2e8f0", fontSize: 11 } },
+      tooltip: {
+        backgroundColor: ct.tooltip.bg,
+        borderColor: ct.tooltip.border,
+        textStyle: { color: ct.tooltip.text, fontSize: 11 },
+      },
       legend: {
         data: filtered.map((s) => shortSystemName(s)),
-        textStyle: { color: "#94a3b8", fontSize: 10 },
+        textStyle: { color: ct.legend, fontSize: 10 },
         bottom: 0,
       },
       radar: {
         indicator: indicators,
         shape: "polygon",
         splitNumber: 4,
-        axisName: { color: "#94a3b8", fontSize: 11 },
-        splitLine: { lineStyle: { color: "#1e293b" } },
+        axisName: { color: ct.radar.name, fontSize: 11 },
+        splitLine: { lineStyle: { color: ct.radar.splitLine } },
         splitArea: { show: false },
-        axisLine: { lineStyle: { color: "#334155" } },
+        axisLine: { lineStyle: { color: ct.radar.axisLine } },
       },
       series: [{ type: "radar", data: seriesData }],
     };
-  }, [data, filtered, groups, colors]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, filtered, groups, colors, isDark]);
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -108,8 +126,8 @@ export default function Dashboard({ data, activeSystems }: Props) {
               <span className="text-xl">{s.icon}</span>
               <span className="text-xs text-slate-500">{s.label}</span>
             </div>
-            <div className="text-2xl font-bold text-slate-100 mt-1">{s.value}</div>
-            <div className="text-xs text-slate-500">{s.sub}</div>
+            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-1">{s.value}</div>
+            <div className="text-xs text-slate-400 dark:text-slate-500">{s.sub}</div>
           </div>
         ))}
       </div>
@@ -143,15 +161,15 @@ export default function Dashboard({ data, activeSystems }: Props) {
             const top = bestEntries[0];
             if (!top) return null;
             return (
-              <div key={g.id} className="bg-surface-800 rounded-lg p-3">
+              <div key={g.id} className="bg-slate-50 dark:bg-surface-800 rounded-lg p-3 transition-colors duration-200">
                 <div className="flex items-center gap-1.5 mb-2">
                   <span>{g.icon}</span>
-                  <span className="text-xs font-medium text-slate-400">{g.label}</span>
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{g.label}</span>
                 </div>
-                <div className="text-xs font-semibold text-slate-200 truncate" title={shortSystemName(top.system)}>
+                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate" title={shortSystemName(top.system)}>
                   {shortSystemName(top.system)}
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5 truncate" title={top.test}>{top.test}</div>
+                <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate" title={top.test}>{top.test}</div>
               </div>
             );
           })}
