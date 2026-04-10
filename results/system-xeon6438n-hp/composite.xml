@@ -1,0 +1,162 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+  <System>
+    <Hardware>Processor: Intel Xeon 6438N @ 2.00GHz, Motherboard: HP ProLiant DL380 Gen11, Memory: 16 x 32 GB DDR5-4400, Disk: Samsung PM983 1.92TB NVMe, Network: Broadcom NetXtreme BCM57416 10GbE</Hardware>
+    <Software>OS: Rocky Linux 9.4, Kernel: 5.14.0-427.13.1.el9_4.x86_64, Compiler: GCC 11.4.1, File-System: xfs</Software>
+  </System>
+  <Result>
+    <Title>Nginx</Title>
+    <Scale>Requests/sec</Scale>
+    <Description>HTTP/1.1 GET benchmark, 1024 concurrent connections</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>131450.3</Value></Entry>
+      <Entry><Value>130980.8</Value></Entry>
+      <Entry><Value>131820.5</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>MBW</Title>
+    <Scale>MB/s</Scale>
+    <Description>Memory Copy - MEMCPY method</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>48230.5</Value></Entry>
+      <Entry><Value>47980.1</Value></Entry>
+      <Entry><Value>48110.9</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>MBW</Title>
+    <Scale>MB/s</Scale>
+    <Description>Memory Copy - Fixed Block Size</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>44560.3</Value></Entry>
+      <Entry><Value>44280.7</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>Sysbench</Title>
+    <Scale>Events/sec</Scale>
+    <Description>CPU performance test: sysbench cpu run</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>10230.5</Value></Entry>
+      <Entry><Value>10180.8</Value></Entry>
+      <Entry><Value>10260.2</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>Sysbench</Title>
+    <Scale>MB/s</Scale>
+    <Description>RAM/Memory performance test: sysbench memory run</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>21340.6</Value></Entry>
+      <Entry><Value>21180.4</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>OpenSSL</Title>
+    <Scale>MB/s</Scale>
+    <Description>Algorithm: AES-256-CBC</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>7450.8</Value></Entry>
+      <Entry><Value>7380.2</Value></Entry>
+      <Entry><Value>7510.5</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>OpenSSL</Title>
+    <Scale>MB/s</Scale>
+    <Description>Algorithm: SHA256</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>12890.4</Value></Entry>
+      <Entry><Value>12760.9</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>FIO</Title>
+    <Scale>IOPS</Scale>
+    <Description>Random Read 4K QD32</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>261000</Value></Entry>
+      <Entry><Value>259800</Value></Entry>
+      <Entry><Value>261900</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>FIO</Title>
+    <Scale>IOPS</Scale>
+    <Description>Sequential Write 128K</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>4800.3</Value></Entry>
+      <Entry><Value>4750.7</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>Redis</Title>
+    <Scale>Requests/sec</Scale>
+    <Description>SET operations pipeline 16</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>1089500</Value></Entry>
+      <Entry><Value>1082300</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>Redis</Title>
+    <Scale>Requests/sec</Scale>
+    <Description>GET operations pipeline 16</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>1289400</Value></Entry>
+      <Entry><Value>1281600</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>Stress-NG</Title>
+    <Scale>Bogo ops/s</Scale>
+    <Description>Test: cpu - CPU stress with various math operations</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>84320.6</Value></Entry>
+      <Entry><Value>83950.4</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>Stress-NG</Title>
+    <Scale>Bogo ops/s</Scale>
+    <Description>Test: matrix - Matrix math operations</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>38940.5</Value></Entry>
+      <Entry><Value>38720.1</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>Stress-NG</Title>
+    <Scale>Bogo ops/s</Scale>
+    <Description>Test: vm - Virtual memory stress</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>208340.5</Value></Entry>
+      <Entry><Value>207800.2</Value></Entry>
+    </Data>
+  </Result>
+  <Result>
+    <Title>Stress-NG</Title>
+    <Scale>Bogo ops/s</Scale>
+    <Description>Test: memcpy - Memory copy operations</Description>
+    <Proportion>HIB</Proportion>
+    <Data>
+      <Entry><Value>109870.2</Value></Entry>
+      <Entry><Value>109340.8</Value></Entry>
+    </Data>
+  </Result>
+</PhoronixTestSuite>
